@@ -12,6 +12,8 @@ const { createClient } = require("@supabase/supabase-js");
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
+const http = require("http");
+
 const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_KEY
@@ -206,4 +208,13 @@ client.on("messageCreate", async message => {
 
 });
 
-client.login(TOKEN); 
+client.login(TOKEN);
+
+http.createServer((req, res) => {
+    res.writeHead(200, {
+        "Content-Type": "text/plain"
+    });
+    res.end("Bot Online");
+}).listen(process.env.PORT || 3000, () => {
+    console.log(`Web Server Running On Port ${process.env.PORT || 3000}`);
+});
