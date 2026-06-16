@@ -96,96 +96,129 @@ client.once("ready", async () => {
 
 });
 
+// ==========================================
+// XỬ LÝ SLASH COMMANDS (ĐÃ ĐƯỢC CẬP NHẬT)
+// ==========================================
 client.on("interactionCreate", async interaction => {
 
     if (!interaction.isChatInputCommand()) return;
 
-    if (interaction.commandName === "addkey") {
+    try {
 
-        if (
-            !interaction.member.permissions.has(
-                PermissionsBitField.Flags.Administrator
-            )
-        ) {
-            return interaction.reply({
-                content: "Bạn không có quyền dùng lệnh này.",
-                flags: 64
-            });
-        }
+        if (interaction.commandName === "addkey") {
 
-        const name = interaction.options.getString("name");
-        const value = interaction.options.getString("value");
+            await interaction.deferReply();
 
-        const { error } = await supabase
-            .from("keys")
-            .upsert({
-                name,
-                value
-            });
+            if (
+                !interaction.member.permissions.has(
+                    PermissionsBitField.Flags.Administrator
+                )
+            ) {
+                return interaction.editReply(
+                    "Bạn không có quyền dùng lệnh này."
+                );
+            }
 
-        if (error) {
-            return interaction.reply(
-                `Lỗi: ${error.message}`
+            const name = interaction.options.getString("name");
+            const value = interaction.options.getString("value");
+
+            const { error } = await supabase
+                .from("keys")
+                .upsert({
+                    name,
+                    value
+                });
+
+            if (error) {
+                return interaction.editReply(
+                    `Lỗi: ${error.message}`
+                );
+            }
+
+            return interaction.editReply(
+                `Đã lưu key: ${name}`
             );
         }
 
-        return interaction.reply(
-            `Đã lưu key: ${name}`
-        );
-    }
+        if (interaction.commandName === "listkey") {
 
-    if (interaction.commandName === "listkey") {
+            await interaction.deferReply();
 
-        const { data, error } = await supabase
-            .from("keys")
-            .select("name");
+            const { data, error } = await supabase
+                .from("keys")
+                .select("name");
 
-        if (error) {
-            return interaction.reply(
-                `Lỗi: ${error.message}`
+            if (error) {
+                return interaction.editReply(
+                    `Lỗi: ${error.message}`
+                );
+            }
+
+            if (!data || !data.length) {
+                return interaction.editReply(
+                    "Không có key nào."
+                );
+            }
+
+            const text = data
+                .map(x => x.name)
+                .join("\n");
+
+            if (text.length > 1900) {
+                return interaction.editReply(
+                    `Có ${data.length} key. Danh sách quá dài để hiển thị.`
+                );
+            }
+
+            return interaction.editReply(text);
+        }
+
+        if (interaction.commandName === "delkey") {
+
+            await interaction.deferReply();
+
+            if (
+                !interaction.member.permissions.has(
+                    PermissionsBitField.Flags.Administrator
+                )
+            ) {
+                return interaction.editReply(
+                    "Bạn không có quyền dùng lệnh này."
+                );
+            }
+
+            const name = interaction.options.getString("name");
+
+            const { error } = await supabase
+                .from("keys")
+                .delete()
+                .eq("name", name);
+
+            if (error) {
+                return interaction.editReply(
+                    `Lỗi: ${error.message}`
+                );
+            }
+
+            return interaction.editReply(
+                `Đã xóa key: ${name}`
             );
         }
 
-        if (!data.length) {
-            return interaction.reply(
-                "Không có key nào."
+    } catch (err) {
+
+        console.error(err);
+
+        if (interaction.deferred || interaction.replied) {
+            return interaction.editReply(
+                "Đã xảy ra lỗi khi xử lý lệnh."
             );
         }
 
-        return interaction.reply(
-            data.map(x => x.name).join("\n")
-        );
-    }
-
-    if (interaction.commandName === "delkey") {
-
-        if (
-            !interaction.member.permissions.has(
-                PermissionsBitField.Flags.Administrator
-            )
-        ) {
-            return interaction.reply({
-                content: "Bạn không có quyền dùng lệnh này.",
-                flags: 64
-            });
-        }
-
-        const name = interaction.options.getString("name");
-
-        const { error } = await supabase
-            .from("keys")
-            .delete()
-            .eq("name", name);
-
-        if (error) {
-            return interaction.reply(
-                `Lỗi: ${error.message}`
-            );
-        }
-
-        return interaction.reply(
-            `Đã xóa key: ${name}`
-        );
+        return interaction.reply({
+            content: "Đã xảy ra lỗi khi xử lý lệnh.",
+            ephemeral: true
+        });
     }
 
 });
@@ -194,16 +227,20 @@ client.on("messageCreate", async message => {
 
     if (message.author.bot) return;
 
-    const keyName = message.content.trim();
+    try {
+        const keyName = message.content.trim();
 
-    const { data } = await supabase
-        .from("keys")
-        .select("value")
-        .eq("name", keyName)
-        .single();
+        const { data } = await supabase
+            .from("keys")
+            .select("value")
+            .eq("name", keyName)
+            .single();
 
-    if (data) {
-        return message.reply(data.value);
+        if (data) {
+            return message.reply(data.value);
+        }
+    } catch (err) {
+        console.error(err);
     }
 
 });
@@ -218,3 +255,9 @@ http.createServer((req, res) => {
 }).listen(process.env.PORT || 3000, () => {
     console.log(`Web Server Running On Port ${process.env.PORT || 3000}`);
 });
+
+// ==========================================
+// CƠ CHẾ CHỐNG SẬP BOT (CATCH UNHANDLED ERRORS)
+// ==========================================
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
