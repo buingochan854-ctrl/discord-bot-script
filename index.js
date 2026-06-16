@@ -245,7 +245,14 @@ client.on("messageCreate", async message => {
 
 });
 
-client.login(TOKEN);
+console.log("TOKEN:", !!process.env.TOKEN);
+console.log("CLIENT_ID:", !!process.env.CLIENT_ID);
+console.log("SUPABASE_URL:", !!process.env.SUPABASE_URL);
+console.log("SUPABASE_KEY:", !!process.env.SUPABASE_KEY);
+
+client.login(TOKEN)
+    .then(() => console.log("Login Success"))
+    .catch(console.error);
 
 http.createServer((req, res) => {
     res.writeHead(200, {
