@@ -27,6 +27,9 @@ const client = new Client({
     ]
 });
 
+client.on("error", console.error);
+client.on("warn", console.warn);
+
 const commands = [
     new SlashCommandBuilder()
         .setName("addkey")
@@ -250,9 +253,16 @@ console.log("CLIENT_ID:", !!process.env.CLIENT_ID);
 console.log("SUPABASE_URL:", !!process.env.SUPABASE_URL);
 console.log("SUPABASE_KEY:", !!process.env.SUPABASE_KEY);
 
-client.login(TOKEN)
-    .then(() => console.log("Login Success"))
-    .catch(console.error);
+(async () => {
+    try {
+        console.log("Starting Discord Login...");
+        await client.login(TOKEN);
+        console.log("Login Success");
+    } catch (err) {
+        console.error("Login Failed:");
+        console.error(err);
+    }
+})();
 
 http.createServer((req, res) => {
     res.writeHead(200, {
