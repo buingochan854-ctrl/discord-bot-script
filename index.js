@@ -27,6 +27,16 @@ const client = new Client({
     ]
 });
 
+client.on("debug", console.log);
+
+client.on("shardError", error => {
+    console.error("Shard Error:", error);
+});
+
+client.on("invalidated", () => {
+    console.error("Session Invalidated");
+});
+
 client.on("error", console.error);
 client.on("warn", console.warn);
 
@@ -62,7 +72,7 @@ const commands = [
         )
 ].map(cmd => cmd.toJSON());
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
 
     console.log(`${client.user.tag} Online`);
 
@@ -252,6 +262,8 @@ console.log("TOKEN:", !!process.env.TOKEN);
 console.log("CLIENT_ID:", !!process.env.CLIENT_ID);
 console.log("SUPABASE_URL:", !!process.env.SUPABASE_URL);
 console.log("SUPABASE_KEY:", !!process.env.SUPABASE_KEY);
+
+console.log("Token Length:", TOKEN?.length);
 
 (async () => {
     try {
