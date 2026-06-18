@@ -110,7 +110,7 @@ client.on("invalidated", () => {
     console.log("[SESSION INVALIDATED]");
 });
 
-client.once("clientReady", async () => {
+client.once("ready", async () => {
     console.log("================================");
     console.log("BOT READY");
     console.log("BOT:", client.user.tag);
@@ -164,7 +164,6 @@ client.on("interactionCreate", async interaction => {
                 );
             }
 
-            // ĐÃ SỬA: Thêm .trim().toLowerCase()
             const name = interaction.options
                 .getString("name")
                 .trim()
@@ -222,7 +221,6 @@ client.on("interactionCreate", async interaction => {
                 );
             }
 
-            // ĐÃ SỬA THÊM: Tự động trim và lowercase khi xóa để dễ dọn dẹp key cũ
             const name = interaction.options
                 .getString("name")
                 .trim()
@@ -253,28 +251,38 @@ client.on("interactionCreate", async interaction => {
     }
 });
 
-// --- Tự động trả lời key ---
+// --- Tự động trả lời key (Đã cập nhật Log Debug) ---
 client.on("messageCreate", async message => {
     if (message.author.bot) return;
 
+    console.log("MESSAGE:", message.content);
+
     try {
-        // ĐÃ SỬA: So sánh chữ thường
-        const { data } = await supabase
+        const searchName = message.content
+            .trim()
+            .toLowerCase();
+
+        console.log("SEARCH:", searchName);
+
+        const { data, error } = await supabase
             .from("keys")
-            .select("value")
-            .eq(
-                "name",
-                message.content.trim().toLowerCase()
-            )
+            .select("*") // Giữ select("*") như đoạn code mẫu của bạn để lấy toàn bộ dữ liệu
+            .eq("name", searchName)
             .single();
 
+        console.log("DATA:", data);
+        console.log("ERROR:", error);
+
         if (data) {
-            return message.reply(data.value);
+            await message.reply(data.value);
         }
+
     } catch (err) {
-        // Bỏ qua lỗi log nếu không tìm thấy key trùng khớp (hành vi bình thường)
+        // Log lỗi nghiêm trọng, bỏ qua mã PGRST116 nếu chỉ là không tìm thấy hàng nào
         if (err.code !== "PGRST116") { 
             console.error(err);
+        } else {
+            console.log("Supabase Info: No key found matching the search query.");
         }
     }
 });
