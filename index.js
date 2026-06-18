@@ -164,7 +164,11 @@ client.on("interactionCreate", async interaction => {
                 );
             }
 
-            const name = interaction.options.getString("name");
+            // ĐÃ SỬA: Thêm .trim().toLowerCase()
+            const name = interaction.options
+                .getString("name")
+                .trim()
+                .toLowerCase();
             const value = interaction.options.getString("value");
 
             const { error } = await supabase
@@ -218,7 +222,11 @@ client.on("interactionCreate", async interaction => {
                 );
             }
 
-            const name = interaction.options.getString("name");
+            // ĐÃ SỬA THÊM: Tự động trim và lowercase khi xóa để dễ dọn dẹp key cũ
+            const name = interaction.options
+                .getString("name")
+                .trim()
+                .toLowerCase();
 
             const { error } = await supabase
                 .from("keys")
@@ -250,10 +258,14 @@ client.on("messageCreate", async message => {
     if (message.author.bot) return;
 
     try {
+        // ĐÃ SỬA: So sánh chữ thường
         const { data } = await supabase
             .from("keys")
             .select("value")
-            .eq("name", message.content.trim())
+            .eq(
+                "name",
+                message.content.trim().toLowerCase()
+            )
             .single();
 
         if (data) {
