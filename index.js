@@ -251,7 +251,7 @@ client.on("interactionCreate", async interaction => {
     }
 });
 
-// --- Tự động trả lời key (Đã gộp đoạn code Log mới của bạn) ---
+// --- Tự động trả lời key (Sử dụng .ilike) ---
 client.on("messageCreate", async message => {
     // In log message nhận được theo đoạn code mới của bạn
     console.log("MESSAGE RECEIVED:", message.content);
@@ -262,16 +262,14 @@ client.on("messageCreate", async message => {
     console.log("MESSAGE:", message.content);
 
     try {
-        const searchName = message.content
-            .trim()
-            .toLowerCase();
+        const searchName = message.content.trim();
 
         console.log("SEARCH:", searchName);
 
         const { data, error } = await supabase
             .from("keys")
             .select("*") 
-            .eq("name", searchName)
+            .ilike("name", searchName) // Đã đổi từ .eq sang .ilike và bỏ .toLowerCase()
             .single();
 
         console.log("DATA:", data);
