@@ -1,4 +1,12 @@
-const { Client, GatewayIntentBits, version } = require("discord.js");
+const { 
+    Client, 
+    GatewayIntentBits, 
+    version,
+    REST,
+    Routes,
+    SlashCommandBuilder,
+    PermissionsBitField
+} = require("discord.js");
 const { createClient } = require("@supabase/supabase-js");
 const http = require("http");
 const https = require("https");
@@ -18,22 +26,15 @@ const supabase = createClient(
 
 // Test truy cập Discord API
 https.get("https://discord.com/api/v10/gateway", (res) => {
-
     console.log("Gateway Status:", res.statusCode);
-
     let data = "";
-
     res.on("data", chunk => data += chunk);
-
     res.on("end", () => {
         console.log("Gateway Response:", data);
     });
-
 }).on("error", (err) => {
-
     console.error("Gateway Error:");
     console.error(err);
-
 });
 
 // Discord Client
@@ -44,6 +45,40 @@ const client = new Client({
         GatewayIntentBits.MessageContent
     ]
 });
+
+// --- Khai báo Commands ---
+const commands = [
+    new SlashCommandBuilder()
+        .setName("addkey")
+        .setDescription("Thêm key")
+        .addStringOption(option =>
+            option
+                .setName("name")
+                .setDescription("Tên key")
+                .setRequired(true)
+        )
+        .addStringOption(option =>
+            option
+                .setName("value")
+                .setDescription("Giá trị")
+                .setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName("listkey")
+        .setDescription("Xem danh sách key"),
+
+    new SlashCommandBuilder()
+        .setName("delkey")
+        .setDescription("Xóa key")
+        .addStringOption(option =>
+            option
+                .setName("name")
+                .setDescription("Tên key")
+                .setRequired(true)
+        )
+].map(cmd => cmd.toJSON());
+
 
 client.on("debug", (msg) => {
     console.log("[DEBUG]", msg);
@@ -76,14 +111,12 @@ client.on("invalidated", () => {
 });
 
 client.once("clientReady", async () => {
-
     console.log("================================");
     console.log("BOT READY");
     console.log("BOT:", client.user.tag);
     console.log("================================");
 
     try {
-
         const { error } = await supabase
             .from("keys")
             .select("name")
@@ -94,33 +127,156 @@ client.once("clientReady", async () => {
             console.error(error);
         } else {
             console.log("Supabase Connected");
+
+            // --- Đăng ký Slash Commands ---
+            const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+
+            await rest.put(
+                Routes.applicationCommands(process.env.CLIENT_ID),
+                {
+                    body: commands
+                }
+            );
+
+            console.log("Slash Commands Loaded");
         }
-
     } catch (err) {
-
         console.error("Supabase Error:");
         console.error(err);
-
     }
+});
 
+// --- Xử lý Slash Commands ---
+client.on("interactionCreate", async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+
+    try {
+        await interaction.deferReply();
+
+        if (interaction.commandName === "addkey") {
+            if (
+                !interaction.member.permissions.has(
+                    PermissionsBitField.Flags.Administrator
+                )
+            ) {
+                return interaction.editReply(
+                    "Bạn không có quyền."
+                );
+            }
+
+            const name = interaction.options.getString("name");
+            const value = interaction.options.getString("value");
+
+            const { error } = await supabase
+                .from("keys")
+                .upsert({
+                    name,
+                    value
+                });
+
+            if (error) {
+                return interaction.editReply(
+                    error.message
+                );
+            }
+
+            return interaction.editReply(
+                `Đã lưu key: ${name}`
+            );
+        }
+
+        if (interaction.commandName === "listkey") {
+            const { data, error } = await supabase
+                .from("keys")
+                .select("name");
+
+            if (error) {
+                return interaction.editReply(
+                    error.message
+                );
+            }
+
+            if (!data.length) {
+                return interaction.editReply(
+                    "Không có key nào."
+                );
+            }
+
+            return interaction.editReply(
+                data.map(x => x.name).join("\n")
+            );
+        }
+
+        if (interaction.commandName === "delkey") {
+            if (
+                !interaction.member.permissions.has(
+                    PermissionsBitField.Flags.Administrator
+                )
+            ) {
+                return interaction.editReply(
+                    "Bạn không có quyền."
+                );
+            }
+
+            const name = interaction.options.getString("name");
+
+            const { error } = await supabase
+                .from("keys")
+                .delete()
+                .eq("name", name);
+
+            if (error) {
+                return interaction.editReply(
+                    error.message
+                );
+            }
+
+            return interaction.editReply(
+                `Đã xóa key: ${name}`
+            );
+        }
+    } catch (err) {
+        console.error(err);
+        if (interaction.deferred) {
+            interaction.editReply(
+                "Đã xảy ra lỗi."
+            );
+        }
+    }
+});
+
+// --- Tự động trả lời key ---
+client.on("messageCreate", async message => {
+    if (message.author.bot) return;
+
+    try {
+        const { data } = await supabase
+            .from("keys")
+            .select("value")
+            .eq("name", message.content.trim())
+            .single();
+
+        if (data) {
+            return message.reply(data.value);
+        }
+    } catch (err) {
+        // Bỏ qua lỗi log nếu không tìm thấy key trùng khớp (hành vi bình thường)
+        if (err.code !== "PGRST116") { 
+            console.error(err);
+        }
+    }
 });
 
 // Login
 (async () => {
-
     try {
-
         console.log("Starting Discord Login...");
         await client.login(process.env.TOKEN);
         console.log("LOGIN SUCCESS");
-
     } catch (err) {
-
         console.error("LOGIN FAILED:");
         console.error(err);
-
     }
-
 })();
 
 // Heartbeat
@@ -130,19 +286,14 @@ setInterval(() => {
 
 // Web Server cho Render
 http.createServer((req, res) => {
-
     res.writeHead(200, {
         "Content-Type": "text/plain"
     });
-
     res.end("Bot Test Online");
-
 }).listen(process.env.PORT || 3000, () => {
-
     console.log(
         `Web Server Running On Port ${process.env.PORT || 3000}`
     );
-
 });
 
 // Chống crash
