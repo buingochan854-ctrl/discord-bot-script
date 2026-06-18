@@ -251,8 +251,12 @@ client.on("interactionCreate", async interaction => {
     }
 });
 
-// --- Tự động trả lời key (Đã cập nhật Log Debug) ---
+// --- Tự động trả lời key (Đã gộp đoạn code Log mới của bạn) ---
 client.on("messageCreate", async message => {
+    // In log message nhận được theo đoạn code mới của bạn
+    console.log("MESSAGE RECEIVED:", message.content);
+
+    // Bỏ qua nếu tin nhắn là của bot
     if (message.author.bot) return;
 
     console.log("MESSAGE:", message.content);
@@ -266,7 +270,7 @@ client.on("messageCreate", async message => {
 
         const { data, error } = await supabase
             .from("keys")
-            .select("*") // Giữ select("*") như đoạn code mẫu của bạn để lấy toàn bộ dữ liệu
+            .select("*") 
             .eq("name", searchName)
             .single();
 
