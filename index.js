@@ -312,7 +312,7 @@ http.createServer((req, res) => {
         "Content-Type": "text/plain"
     });
     res.end("Bot Test Online");
-}).listen(process.env.PORT || 3000, () => {
+}).listen(process.env.PORT || 7860, () => {
     console.log(
         `Web Server Running On Port ${process.env.PORT || 3000}`
     );
