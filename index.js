@@ -146,12 +146,45 @@ client.once("ready", async () => {
     }
 });
 
+// ==========================================
+//   CẤU HÌNH HỆ THỐNG CHẶN KEY (BLACKLIST)
+// ==========================================
+const BLACKLIST = [
+    "1497621718041104446"
+];
+
+// Chỉ cần điền từ khóa chính của lệnh vào đây. 
+// Hệ thống tự động kiểm tra xem lệnh có "chứa" các từ khóa này không (Ví dụ: "editkey", "findkey" cũng dính).
+const KEY_COMMAND_KEYWORDS = [
+    "key" 
+];
+
 // --- Xử lý Slash Commands ---
 client.on("interactionCreate", async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     try {
         await interaction.deferReply();
+
+        // --- Kiểm tra quyền Blacklist ngay sau khi Defer ---
+        const userId = interaction.user.id;
+        const cmdName = interaction.commandName;
+
+        // Kiểm tra xem tên lệnh hiện tại có chứa chữ "key" hay không
+        const isKeyCommand = KEY_COMMAND_KEYWORDS.some(keyword => cmdName.includes(keyword));
+
+        if (BLACKLIST.includes(userId) && isKeyCommand) {
+            // Định nghĩa động nội dung hành động dựa vào tên lệnh
+            let actionText = "Thao Tác";
+            if (cmdName === "addkey") actionText = "Thêm";
+            else if (cmdName === "delkey") actionText = "Xóa";
+            else if (cmdName === "listkey") actionText = "Xem";
+
+            return interaction.editReply(
+                `❌ Bạn Không Có Quyền ${actionText} Key! (Blacklist)`
+            );
+        }
+        // --- Kết thúc kiểm tra Blacklist ---
 
         if (interaction.commandName === "addkey") {
             if (
@@ -253,10 +286,8 @@ client.on("interactionCreate", async interaction => {
 
 // --- Tự động trả lời key (Sử dụng .ilike) ---
 client.on("messageCreate", async message => {
-    // In log message nhận được theo đoạn code mới của bạn
     console.log("MESSAGE RECEIVED:", message.content);
 
-    // Bỏ qua nếu tin nhắn là của bot
     if (message.author.bot) return;
 
     console.log("MESSAGE:", message.content);
@@ -269,7 +300,7 @@ client.on("messageCreate", async message => {
         const { data, error } = await supabase
             .from("keys")
             .select("*") 
-            .ilike("name", searchName) // Đã đổi từ .eq sang .ilike và bỏ .toLowerCase()
+            .ilike("name", searchName)
             .single();
 
         console.log("DATA:", data);
@@ -280,7 +311,6 @@ client.on("messageCreate", async message => {
         }
 
     } catch (err) {
-        // Log lỗi nghiêm trọng, bỏ qua mã PGRST116 nếu chỉ là không tìm thấy hàng nào
         if (err.code !== "PGRST116") { 
             console.error(err);
         } else {
