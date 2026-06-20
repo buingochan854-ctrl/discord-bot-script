@@ -81,6 +81,7 @@ const commands = [
 
 
 client.on("debug", (msg) => {
+    // Thường log debug rất dài, bạn có thể comment dòng dưới nếu log bị tràn
     console.log("[DEBUG]", msg);
 });
 
@@ -153,8 +154,6 @@ const BLACKLIST = [
     "1497621718041104446"
 ];
 
-// Chỉ cần điền từ khóa chính của lệnh vào đây. 
-// Hệ thống tự động kiểm tra xem lệnh có "chứa" các từ khóa này không (Ví dụ: "editkey", "findkey" cũng dính).
 const KEY_COMMAND_KEYWORDS = [
     "key" 
 ];
@@ -166,15 +165,12 @@ client.on("interactionCreate", async interaction => {
     try {
         await interaction.deferReply();
 
-        // --- Kiểm tra quyền Blacklist ngay sau khi Defer ---
         const userId = interaction.user.id;
         const cmdName = interaction.commandName;
 
-        // Kiểm tra xem tên lệnh hiện tại có chứa chữ "key" hay không
         const isKeyCommand = KEY_COMMAND_KEYWORDS.some(keyword => cmdName.includes(keyword));
 
         if (BLACKLIST.includes(userId) && isKeyCommand) {
-            // Định nghĩa động nội dung hành động dựa vào tên lệnh
             let actionText = "Thao Tác";
             if (cmdName === "addkey") actionText = "Thêm";
             else if (cmdName === "delkey") actionText = "Xóa";
@@ -184,7 +180,6 @@ client.on("interactionCreate", async interaction => {
                 `❌ Bạn Không Có Quyền ${actionText} Key! (Blacklist)`
             );
         }
-        // --- Kết thúc kiểm tra Blacklist ---
 
         if (interaction.commandName === "addkey") {
             if (
@@ -197,6 +192,7 @@ client.on("interactionCreate", async interaction => {
                 );
             }
 
+            // Khi lưu, ta lưu chữ thường (lowercase) để đồng bộ dữ liệu
             const name = interaction.options
                 .getString("name")
                 .trim()
@@ -284,38 +280,35 @@ client.on("interactionCreate", async interaction => {
     }
 });
 
-// --- Tự động trả lời key (Sử dụng .ilike) ---
+// --- Tự động trả lời key (Đã tối ưu hoa/thường và xóa lỗi PGRST116) ---
 client.on("messageCreate", async message => {
-    console.log("MESSAGE RECEIVED:", message.content);
-
     if (message.author.bot) return;
 
-    console.log("MESSAGE:", message.content);
+    // Bỏ qua các tin nhắn trống hoặc chỉ có khoảng trắng
+    const searchName = message.content.trim();
+    if (!searchName) return;
 
     try {
-        const searchName = message.content.trim();
-
-        console.log("SEARCH:", searchName);
-
+        // Sử dụng .ilike để tìm không phân biệt hoa thường, kết hợp .maybeSingle() để tránh lỗi 0 rows
         const { data, error } = await supabase
             .from("keys")
-            .select("*") 
+            .select("value") 
             .ilike("name", searchName)
-            .single();
+            .maybeSingle();
 
-        console.log("DATA:", data);
-        console.log("ERROR:", error);
+        if (error) {
+            console.error("[Supabase Query Error]:", error.message);
+            return;
+        }
 
-        if (data) {
+        // Nếu tìm thấy dữ liệu khớp, tiến hành reply tin nhắn
+        if (data && data.value) {
+            console.log(`[FOUND KEY]: "${searchName}" -> Trả về giá trị.`);
             await message.reply(data.value);
         }
 
     } catch (err) {
-        if (err.code !== "PGRST116") { 
-            console.error(err);
-        } else {
-            console.log("Supabase Info: No key found matching the search query.");
-        }
+        console.error("[Message Event Crash Prevention]:", err);
     }
 });
 
@@ -348,6 +341,6 @@ http.createServer((req, res) => {
     );
 });
 
-// Chống crash
+// Chống crash ứng dụng
 process.on("unhandledRejection", console.error);
-process.on("uncaughtException", console.error);
+process.on("uncaughtException", console.error); 
