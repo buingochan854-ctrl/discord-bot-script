@@ -89,7 +89,7 @@ const commands = [
         .setDescription("Xem lịch sử thao tác key")
 ].map(cmd => cmd.toJSON());
 
-// --- Bổ sung các bộ lắng nghe sự kiện chi tiết để debug ---
+// --- Báo log debug hệ thống ---
 client.on("debug", (msg) => {
     console.log("[DEBUG]", msg);
 });
@@ -110,15 +110,6 @@ client.on("shardDisconnect", (event) => {
     console.log("SHARD DISCONNECT:", event.code, `(Reason: ${event.reason || "Unknown"})`);
 });
 
-client.on("shardReconnecting", () => {
-    console.log("[SHARD RECONNECTING]");
-});
-
-client.on("invalidated", () => {
-    console.log("[SESSION INVALIDATED]");
-});
-
-// Sự kiện chuẩn khi bot bắt đầu chạy thành công
 client.once("ready", async () => {
     console.log("================================");
     console.log("BOT READY - CLIENT READY");
@@ -149,6 +140,13 @@ client.once("ready", async () => {
     }
 });
 
+// --- Hàm chuẩn hóa chuỗi dữ liệu (Xóa khoảng trắng thừa + Lowercase) ---
+function cleanKeyName(str) {
+    if (!str) return "";
+    // .replace(/\s+/g, " ") biến nhiều dấu cách liên tiếp ở giữa thành 1 dấu cách duy nhất
+    return str.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 // --- Xử lý Slash Commands ---
 client.on("interactionCreate", async interaction => {
     if (!interaction.isChatInputCommand()) return;
@@ -175,11 +173,12 @@ client.on("interactionCreate", async interaction => {
             return interaction.editReply(`❌ Bạn Không Có Quyền ${actionText} Key! (Blacklist)`);
         }
 
+        // --- COMMAND: ADDKEY ---
         if (interaction.commandName === "addkey") {
             if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                 return interaction.editReply("Bạn không có quyền quản trị viên.");
             }
-            const name = interaction.options.getString("name").trim().toLowerCase();
+            const name = cleanKeyName(interaction.options.getString("name"));
             const value = interaction.options.getString("value");
 
             const { error } = await supabase.from("keys").upsert({ name, value });
@@ -189,18 +188,22 @@ client.on("interactionCreate", async interaction => {
             return interaction.editReply(`✅ Đã lưu key: \`${name}\``);
         }
 
+        // --- COMMAND: LISTKEY ---
         if (interaction.commandName === "listkey") {
             const { data, error } = await supabase.from("keys").select("name");
             if (error) return interaction.editReply(`❌ Lỗi: ${error.message}`);
             if (!data.length) return interaction.editReply("Không có key nào trong hệ thống.");
-            return interaction.editReply(data.map(x => x.name).join("\n"));
+            
+            // Bọc dấu gạch đứng để dễ phát hiện nếu có khoảng trắng lỗi trong DB cũ
+            return interaction.editReply(data.map(x => `• \`${x.name}\``).join("\n"));
         }
 
+        // --- COMMAND: DELKEY ---
         if (interaction.commandName === "delkey") {
             if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                 return interaction.editReply("Bạn không có quyền quản trị viên.");
             }
-            const name = interaction.options.getString("name").trim().toLowerCase();
+            const name = cleanKeyName(interaction.options.getString("name"));
 
             const { data, error } = await supabase.from("keys").delete().eq("name", name).select();
             if (error) return interaction.editReply(`❌ Lỗi: ${error.message}`);
@@ -210,16 +213,17 @@ client.on("interactionCreate", async interaction => {
             return interaction.editReply(`✅ Đã xóa thành công key: \`${name}\``);
         }
 
+        // --- COMMAND: EDITKEY ---
         if (interaction.commandName === "editkey") {
             if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                 return interaction.editReply("Bạn không có quyền quản trị viên.");
             }
-            const name = interaction.options.getString("name").trim().toLowerCase();
+            const name = cleanKeyName(interaction.options.getString("name"));
             const newName = interaction.options.getString("newname");
             const newValue = interaction.options.getString("newvalue");
 
             const updateData = { value: newValue };
-            if (newName) updateData.name = newName.trim().toLowerCase();
+            if (newName) updateData.name = cleanKeyName(newName);
 
             const { data, error } = await supabase.from("keys").update(updateData).eq("name", name).select();
             if (error) return interaction.editReply(`❌ Lỗi: ${error.message}`);
@@ -230,6 +234,7 @@ client.on("interactionCreate", async interaction => {
             return interaction.editReply(`✅ Đã chỉnh sửa thành công key: \`${name}\``);
         }
 
+        // --- COMMAND: LOGKEY ---
         if (interaction.commandName === "logkey") {
             const { data, error } = await supabase.from("key_logs").select("*").order("created_at", { ascending: false }).limit(10);
             if (error) return interaction.editReply(`❌ Không thể lấy danh sách nhật ký: ${error.message}`);
@@ -247,13 +252,14 @@ client.on("interactionCreate", async interaction => {
     }
 });
 
-// --- Tự động trả lời key ---
+// --- Tự động trả lời khi nhắn tin ---
 client.on("messageCreate", async message => {
     if (message.author.bot) return;
-    const searchName = message.content.trim();
+    const searchName = cleanKeyName(message.content);
     if (!searchName) return;
 
     try {
+        // Lệnh chat dùng .ilike() bảo mật và chính xác cho select
         const { data, error } = await supabase.from("keys").select("value").ilike("name", searchName).maybeSingle();
         if (error) {
             console.error("[Supabase Query Error]:", error.message);
