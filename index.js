@@ -9,13 +9,10 @@ const {
 } = require("discord.js");
 const { createClient } = require("@supabase/supabase-js");
 const http = require("http");
-const https = require("https");
 
 console.log("================================");
 console.log("Discord.js Version:", version);
 console.log("Node Version:", process.version);
-console.log("TOKEN EXISTS:", !!process.env.TOKEN);
-console.log("TOKEN LENGTH:", process.env.TOKEN?.length);
 console.log("================================");
 
 // Supabase
@@ -23,19 +20,6 @@ const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_KEY
 );
-
-// Test truy cập Discord API
-https.get("https://discord.com/api/v10/gateway", (res) => {
-    console.log("Gateway Status:", res.statusCode);
-    let data = "";
-    res.on("data", chunk => data += chunk);
-    res.on("end", () => {
-        console.log("Gateway Response:", data);
-    });
-}).on("error", (err) => {
-    console.error("Gateway Error:");
-    console.error(err);
-});
 
 // Discord Client
 const client = new Client({
@@ -191,7 +175,7 @@ client.on("interactionCreate", async interaction => {
         await interaction.deferReply();
 
         const userId = interaction.user.id;
-        const userTag = interaction.user.tag; // Lấy tag người dùng (Ví dụ: "quang_anh" hoặc "quang#1234")
+        const userTag = interaction.user.tag; 
         const cmdName = interaction.commandName;
 
         const isKeyCommand = KEY_COMMAND_KEYWORDS.some(keyword => cmdName.includes(keyword));
@@ -299,7 +283,6 @@ client.on("interactionCreate", async interaction => {
 
             const updateData = { value: newValue };
 
-            // Nếu người dùng muốn đổi luôn cả tên key sang tên mới
             if (newName) {
                 updateData.name = newName.trim().toLowerCase();
             }
@@ -318,7 +301,6 @@ client.on("interactionCreate", async interaction => {
                 return interaction.editReply(`❌ Không tìm thấy key \`${name}\` để chỉnh sửa.`);
             }
 
-            // Xác định tên hiển thị trong log (Dùng tên mới nếu có thay đổi)
             const logKeyName = newName ? `${name} -> ${updateData.name}` : name;
 
             // Ghi log hành động EDIT
@@ -349,7 +331,6 @@ client.on("interactionCreate", async interaction => {
             }
 
             const logs = data.map(log => {
-                // Ưu tiên hiển thị tên tag Discord, nếu trống thì hiện ID
                 const operator = log.user_tag ? log.user_tag : log.user_id;
                 return `\`[${log.action}]\` **${log.key_name}** | Thực hiện bởi: *${operator}*`;
             }).join("\n");
