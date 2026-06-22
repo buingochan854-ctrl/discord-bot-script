@@ -211,14 +211,14 @@ client.on("interactionCreate", async interaction => {
             else if (cmdName === "logkey") actionText = "Xem Log";
 
             return interaction.editReply(
-                `❌ Bạn Không Có Quyền ${actionText} Key! (Blacklist)`
+                `<:failed:1518595211205283992> Bạn Không Có Quyền ${actionText} Key! (Blacklist)`
             );
         }
 
         // --- COMMAND: ADDKEY ---
         if (interaction.commandName === "addkey") {
             if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-                return interaction.editReply("Bạn không có quyền quản trị viên.");
+                return interaction.editReply("<:failed:1518595211205283992> Bạn không có quyền quản trị viên.");
             }
 
             const name = cleanKeyName(interaction.options.getString("name"));
@@ -229,7 +229,7 @@ client.on("interactionCreate", async interaction => {
                 .upsert({ name, value });
 
             if (error) {
-                return interaction.editReply(`❌ Lỗi: ${error.message}`);
+                return interaction.editReply(`<:failed:1518595211205283992> Lỗi: ${error.message}`);
             }
 
             // Ghi log hành động ADD
@@ -240,7 +240,7 @@ client.on("interactionCreate", async interaction => {
                 user_tag: userTag
             });
 
-            return interaction.editReply(`✅ Đã lưu key: \`${name}\``);
+            return interaction.editReply(`<:success:1518594913179013141> Đã lưu key: \`${name}\``);
         }
 
         // --- COMMAND: LISTKEY ---
@@ -250,11 +250,11 @@ client.on("interactionCreate", async interaction => {
                 .select("name");
 
             if (error) {
-                return interaction.editReply(`❌ Lỗi: ${error.message}`);
+                return interaction.editReply(`<:failed:1518595211205283992> Lỗi: ${error.message}`);
             }
 
             if (!data.length) {
-                return interaction.editReply("Không có key nào trong hệ thống.");
+                return interaction.editReply("<:failed:1518595211205283992> Không có key nào trong hệ thống.");
             }
 
             return interaction.editReply(data.map(x => x.name).join("\n"));
@@ -263,34 +263,32 @@ client.on("interactionCreate", async interaction => {
         // --- COMMAND: DELKEY ---
         if (interaction.commandName === "delkey") {
             if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-                return interaction.editReply("Bạn không có quyền quản trị viên.");
+                return interaction.editReply("<:failed:1518595211205283992> Bạn không có quyền quản trị viên.");
             }
 
             const name = cleanKeyName(interaction.options.getString("name"));
 
-            // Lấy toàn bộ keys để tìm kiếm dựa trên hàm chuẩn hóa dữ liệu (Quét triệt để data cũ)
             const { data: allKeys, error: fetchError } = await supabase
                 .from("keys")
                 .select("*");
 
             if (fetchError) {
-                return interaction.editReply(`❌ Lỗi đồng bộ dữ liệu: ${fetchError.message}`);
+                return interaction.editReply(`<:failed:1518595211205283992> Lỗi đồng bộ dữ liệu: ${fetchError.message}`);
             }
 
             const target = allKeys?.find(k => cleanKeyName(k.name) === name);
 
             if (!target) {
-                return interaction.editReply(`❌ Không tìm thấy key \`${name}\` để xóa.`);
+                return interaction.editReply(`<:failed:1518595211205283992> Không tìm thấy key \`${name}\` để xóa.`);
             }
 
-            // Tiến hành xóa dựa theo tên gốc chính xác tìm thấy trong Database
             const { error } = await supabase
                 .from("keys")
                 .delete()
                 .eq("name", target.name);
 
             if (error) {
-                return interaction.editReply(`❌ Lỗi khi xóa: ${error.message}`);
+                return interaction.editReply(`<:failed:1518595211205283992> Lỗi khi xóa: ${error.message}`);
             }
 
             // Ghi log hành động DELETE
@@ -301,32 +299,31 @@ client.on("interactionCreate", async interaction => {
                 user_tag: userTag
             });
 
-            return interaction.editReply(`✅ Đã xóa thành công key: \`${name}\``);
+            return interaction.editReply(`<:success:1518594913179013141> Đã xóa thành công key: \`${name}\``);
         }
 
         // --- COMMAND: EDITKEY ---
         if (interaction.commandName === "editkey") {
             if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-                return interaction.editReply("Bạn không có quyền quản trị viên.");
+                return interaction.editReply("<:failed:1518595211205283992> Bạn không có quyền quản trị viên.");
             }
 
             const name = cleanKeyName(interaction.options.getString("name"));
             const newName = interaction.options.getString("newname");
             const newValue = interaction.options.getString("newvalue");
 
-            // Lấy toàn bộ keys để tìm kiếm dữ liệu chuẩn hóa (Quét triệt để data cũ)
             const { data: allKeys, error: fetchError } = await supabase
                 .from("keys")
                 .select("*");
 
             if (fetchError) {
-                return interaction.editReply(`❌ Lỗi đồng bộ dữ liệu: ${fetchError.message}`);
+                return interaction.editReply(`<:failed:1518595211205283992> Lỗi đồng bộ dữ liệu: ${fetchError.message}`);
             }
 
             const target = allKeys?.find(k => cleanKeyName(k.name) === name);
 
             if (!target) {
-                return interaction.editReply(`❌ Không tìm thấy key \`${name}\` để chỉnh sửa.`);
+                return interaction.editReply(`<:failed:1518595211205283992> Không tìm thấy key \`${name}\` để chỉnh sửa.`);
             }
 
             const updateData = { value: newValue };
@@ -334,14 +331,13 @@ client.on("interactionCreate", async interaction => {
                 updateData.name = cleanKeyName(newName);
             }
 
-            // Tiến hành cập nhật dựa theo tên gốc chính xác tìm thấy trong Database
             const { error } = await supabase
                 .from("keys")
                 .update(updateData)
                 .eq("name", target.name);
 
             if (error) {
-                return interaction.editReply(`❌ Lỗi khi cập nhật: ${error.message}`);
+                return interaction.editReply(`<:failed:1518595211205283992> Lỗi khi cập nhật: ${error.message}`);
             }
 
             const logKeyName = newName ? `${name} -> ${updateData.name}` : name;
@@ -354,7 +350,7 @@ client.on("interactionCreate", async interaction => {
                 user_tag: userTag
             });
 
-            return interaction.editReply(`✅ Đã chỉnh sửa thành công key: \`${name}\``);
+            return interaction.editReply(`<:success:1518594913179013141> Đã chỉnh sửa thành công key: \`${name}\``);
         }
 
         // --- COMMAND: LOGKEY ---
@@ -366,11 +362,11 @@ client.on("interactionCreate", async interaction => {
                 .limit(10);
 
             if (error) {
-                return interaction.editReply(`❌ Không thể lấy danh sách nhật ký: ${error.message}`);
+                return interaction.editReply(`<:failed:1518595211205283992> Không thể lấy danh sách nhật ký: ${error.message}`);
             }
 
             if (!data || data.length === 0) {
-                return interaction.editReply("Hiện chưa có lịch sử thao tác nào.");
+                return interaction.editReply("<:failed:1518595211205283992> Hiện chưa có lịch sử thao tác nào.");
             }
 
             const logs = data.map(log => {
@@ -384,7 +380,7 @@ client.on("interactionCreate", async interaction => {
     } catch (err) {
         console.error(err);
         if (interaction.deferred) {
-            interaction.editReply("Đã xảy ra lỗi không mong muốn trong hệ thống.");
+            interaction.editReply("<:failed:1518595211205283992> Đã xảy ra lỗi không mong muốn trong hệ thống.");
         }
     }
 });
@@ -397,7 +393,6 @@ client.on("messageCreate", async message => {
     if (!searchName) return;
 
     try {
-        // Lấy toàn bộ danh sách key để check trùng khớp theo dạng cleanKeyName nhằm bao quát hết đống data cũ viết hoa viết thường
         const { data: allKeys, error } = await supabase
             .from("keys")
             .select("name, value");
