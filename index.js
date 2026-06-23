@@ -5,7 +5,11 @@ const {
     REST,
     Routes,
     SlashCommandBuilder,
-    PermissionsBitField
+    PermissionsBitField,
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
 } = require("discord.js");
 const { createClient } = require("@supabase/supabase-js");
 const http = require("http");
@@ -113,7 +117,8 @@ const commands = [
 
 
 client.on("debug", (msg) => {
-    console.log("[DEBUG]", msg);
+    // Thường log debug rất dài, có thể ẩn đi nếu muốn sạch console
+    // console.log("[DEBUG]", msg);
 });
 
 client.on("warn", (msg) => {
@@ -243,21 +248,118 @@ client.on("interactionCreate", async interaction => {
             return interaction.editReply(`<:success:1518594913179013141> Đã lưu key: \`${name}\``);
         }
 
-        // --- COMMAND: LISTKEY ---
+        // --- COMMAND: LISTKEY (HỆ THỐNG CHIA TRANG EMBED + BUTTON) ---
         if (interaction.commandName === "listkey") {
             const { data, error } = await supabase
                 .from("keys")
-                .select("name");
+                .select("name")
+                .order("name", { ascending: true }); // Sắp xếp theo bảng chữ cái cho đẹp mắt
 
             if (error) {
                 return interaction.editReply(`<:failed:1518595211205283992> Lỗi: ${error.message}`);
             }
 
-            if (!data.length) {
+            if (!data || data.length === 0) {
                 return interaction.editReply("<:failed:1518595211205283992> Không có key nào trong hệ thống.");
             }
 
-            return interaction.editReply(data.map(x => x.name).join("\n"));
+            const totalKeys = data.length;
+            const keysPerPage = 30;
+            const totalPages = Math.ceil(totalKeys / keysPerPage);
+            let currentPage = 0;
+
+            // Hàm cục bộ giúp sinh Embed và Button dựa trên số trang hiện tại
+            const generatePageMessage = (page) => {
+                const start = page * keysPerPage;
+                const end = Math.min(start + keysPerPage, totalKeys);
+                
+                // Cắt mảng data và định dạng danh sách có đánh số thứ tự
+                const pageKeys = data.slice(start, end).map((x, index) => `${start + index + 1}. ${x.name}`);
+
+                const embed = new EmbedBuilder()
+                    .setColor("#5865F2")
+                    .setTitle("📦 Danh Sách Key")
+                    .setDescription(pageKeys.join("\n"))
+                    .setFooter({
+                        text: `Trang ${page + 1}/${totalPages} | Key: ${start + 1}-${end}/${totalKeys}`
+                    });
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("first")
+                        .setEmoji("⏪")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(page === 0),
+
+                    new ButtonBuilder()
+                        .setCustomId("prev")
+                        .setEmoji("◀️")
+                        .setStyle(ButtonStyle.Primary)
+                        .setDisabled(page === 0),
+
+                    new ButtonBuilder()
+                        .setCustomId("next")
+                        .setEmoji("▶️")
+                        .setStyle(ButtonStyle.Primary)
+                        .setDisabled(page === totalPages - 1),
+
+                    new ButtonBuilder()
+                        .setCustomId("last")
+                        .setEmoji("⏩")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(page === totalPages - 1)
+                );
+
+                return { embeds: [embed], components: [row] };
+            };
+
+            // Gửi trang đầu tiên (Trang 0) lên Discord
+            const mainMessage = await interaction.editReply(generatePageMessage(currentPage));
+
+            // Tạo bộ lắng nghe tương tác nút bấm (Collector)
+            const collector = mainMessage.createMessageComponentCollector({
+                filter: (btnInteraction) => btnInteraction.user.id === interaction.user.id, // Chỉ cho phép người gọi lệnh tương tác nút
+                time: 60000 // Tồn tại trong vòng 60 giây kể từ lúc gọi lệnh
+            });
+
+            collector.on("collect", async (btnInteraction) => {
+                if (btnInteraction.customId === "first") currentPage = 0;
+                else if (btnInteraction.customId === "prev") currentPage--;
+                else if (btnInteraction.customId === "next") currentPage++;
+                else if (btnInteraction.customId === "last") currentPage = totalPages - 1;
+
+                // Cập nhật lại giao diện tin nhắn cũ một cách mượt mà
+                await btnInteraction.update(generatePageMessage(currentPage));
+            });
+
+            // Khi hết thời gian 60 giây, vô hiệu hóa toàn bộ nút bấm để tránh lỗi
+            collector.on("end", async () => {
+                try {
+                    const start = currentPage * keysPerPage;
+                    const end = Math.min(start + keysPerPage, totalKeys);
+                    const pageKeys = data.slice(start, end).map((x, index) => `${start + index + 1}. ${x.name}`);
+
+                    const disableEmbed = new EmbedBuilder()
+                        .setColor("#747f8d") // Đổi sang màu xám
+                        .setTitle("📦 Danh Sách Key (Hết hạn tương tác)")
+                        .setDescription(pageKeys.join("\n"))
+                        .setFooter({
+                            text: `Trang ${currentPage + 1}/${totalPages} | Key: ${start + 1}-${end}/${totalKeys}`
+                        });
+
+                    const disabledRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId("first_d").setEmoji("⏪").setStyle(ButtonStyle.Secondary).setDisabled(true),
+                        new ButtonBuilder().setCustomId("prev_d").setEmoji("◀️").setStyle(ButtonStyle.Primary).setDisabled(true),
+                        new ButtonBuilder().setCustomId("next_d").setEmoji("▶️").setStyle(ButtonStyle.Primary).setDisabled(true),
+                        new ButtonBuilder().setCustomId("last_d").setEmoji("⏩").setStyle(ButtonStyle.Secondary).setDisabled(true)
+                    );
+
+                    await interaction.editReply({ embeds: [disableEmbed], components: [disabledRow] });
+                } catch (err) {
+                    // Tránh crash nếu tin nhắn gốc lỡ bị xóa trước đó
+                }
+            });
+            return;
         }
 
         // --- COMMAND: DELKEY ---
