@@ -491,10 +491,32 @@ client.on("interactionCreate", async interaction => {
     }
 });
 
-// --- Tự động trả lời key ---
+// --- Sự kiện messageCreate: Xử lý lệnh Prefix (.ping) và Tự động trả lời key ---
 client.on("messageCreate", async message => {
     if (message.author.bot) return;
 
+    // 1. Kiểm tra lệnh .ping
+    if (message.content.toLowerCase() === ".ping") {
+        try {
+            const msg = await message.reply("🏓 Đang kiểm tra...");
+
+            const apiPing = client.ws.ping;
+            const botPing = msg.createdTimestamp - message.createdTimestamp;
+
+            let status = "🟢 Ổn định";
+            if (apiPing > 200) status = "🟡 Khá";
+            if (apiPing > 500) status = "🔴 Chậm";
+
+            await msg.edit({
+                content: `🏓 **Pong!**\n\n📡 API Ping: **${apiPing}ms**\n⚡ Bot Ping: **${botPing}ms**\n📶 Trạng thái: **${status}**\n\n🤖 Bot: **${client.user.tag}**\n🟢 Uptime: **${Math.floor(process.uptime())} giây**\n💾 RAM: **${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB**`
+            });
+        } catch (err) {
+            console.error("[Ping Command Error]:", err);
+        }
+        return; // Dừng lại ở đây, không quét tiếp xuống phần kiểm tra Key
+    }
+
+    // 2. Tự động trả lời key từ Database
     const searchName = cleanKeyName(message.content);
     if (!searchName) return;
 
