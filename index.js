@@ -9,7 +9,8 @@ const {
     EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
-    ButtonStyle
+    ButtonStyle,
+    ActivityType
 } = require("discord.js");
 const { createClient } = require("@supabase/supabase-js");
 const http = require("http");
@@ -54,6 +55,27 @@ const client = new Client({
 function cleanKeyName(str) {
     if (!str) return "";
     return str.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+// --- Hàm tự động cập nhật trạng thái số lượng key ---
+async function updateStatus() {
+    try {
+        const { count, error } = await supabase
+            .from("keys")
+            .select("*", { count: "exact", head: true });
+
+        if (error) {
+            console.error("[Status Update Error]: Fetch failed", error.message);
+            return;
+        }
+
+        client.user.setActivity(`${count || 0} Keys`, {
+            type: ActivityType.Watching // Kiểu hiển thị: "Đang xem ... Keys"
+        });
+        console.log(`[STATUS UPDATED]: Watching ${count || 0} Keys`);
+    } catch (err) {
+        console.error("[Status Update Error]:", err);
+    }
 }
 
 // --- Khai báo Commands ---
@@ -176,6 +198,10 @@ client.once("ready", async () => {
             );
 
             console.log("Slash Commands Loaded");
+
+            // --- Khởi tạo trạng thái ban đầu và đặt vòng lặp ---
+            await updateStatus();
+            setInterval(updateStatus, 60000); // Tự động cập nhật lại mỗi 60 giây
         }
     } catch (err) {
         console.error("Supabase Error:");
@@ -245,6 +271,9 @@ client.on("interactionCreate", async interaction => {
                 user_tag: userTag
             });
 
+            // Cập nhật trạng thái số lượng key ngay lập tức
+            await updateStatus();
+
             return interaction.editReply(`<:success:1518594913179013141> Đã lưu key: \`${name}\``);
         }
 
@@ -253,7 +282,7 @@ client.on("interactionCreate", async interaction => {
             const { data, error } = await supabase
                 .from("keys")
                 .select("name")
-                .order("name", { ascending: true }); // Sắp xếp theo bảng chữ cái cho đẹp mắt
+                .order("name", { ascending: true });
 
             if (error) {
                 return interaction.editReply(`<:failed:1518595211205283992> Lỗi: ${error.message}`);
@@ -268,12 +297,9 @@ client.on("interactionCreate", async interaction => {
             const totalPages = Math.ceil(totalKeys / keysPerPage);
             let currentPage = 0;
 
-            // Hàm cục bộ giúp sinh Embed và Button dựa trên số trang hiện tại
             const generatePageMessage = (page) => {
                 const start = page * keysPerPage;
                 const end = Math.min(start + keysPerPage, totalKeys);
-                
-                // Cắt mảng data và định dạng danh sách có đánh số thứ tự
                 const pageKeys = data.slice(start, end).map((x, index) => `${start + index + 1}. ${x.name}`);
 
                 const embed = new EmbedBuilder()
@@ -285,41 +311,20 @@ client.on("interactionCreate", async interaction => {
                     });
 
                 const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId("first")
-                        .setEmoji("⏪")
-                        .setStyle(ButtonStyle.Secondary)
-                        .setDisabled(page === 0),
-
-                    new ButtonBuilder()
-                        .setCustomId("prev")
-                        .setEmoji("◀️")
-                        .setStyle(ButtonStyle.Primary)
-                        .setDisabled(page === 0),
-
-                    new ButtonBuilder()
-                        .setCustomId("next")
-                        .setEmoji("▶️")
-                        .setStyle(ButtonStyle.Primary)
-                        .setDisabled(page === totalPages - 1),
-
-                    new ButtonBuilder()
-                        .setCustomId("last")
-                        .setEmoji("⏩")
-                        .setStyle(ButtonStyle.Secondary)
-                        .setDisabled(page === totalPages - 1)
+                    new ButtonBuilder().setCustomId("first").setEmoji("⏪").setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+                    new ButtonBuilder().setCustomId("prev").setEmoji("◀️").setStyle(ButtonStyle.Primary).setDisabled(page === 0),
+                    new ButtonBuilder().setCustomId("next").setEmoji("▶️").setStyle(ButtonStyle.Primary).setDisabled(page === totalPages - 1),
+                    new ButtonBuilder().setCustomId("last").setEmoji("⏩").setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages - 1)
                 );
 
                 return { embeds: [embed], components: [row] };
             };
 
-            // Gửi trang đầu tiên (Trang 0) lên Discord
             const mainMessage = await interaction.editReply(generatePageMessage(currentPage));
 
-            // Tạo bộ lắng nghe tương tác nút bấm (Collector)
             const collector = mainMessage.createMessageComponentCollector({
-                filter: (btnInteraction) => btnInteraction.user.id === interaction.user.id, // Chỉ cho phép người gọi lệnh tương tác nút
-                time: 60000 // Tồn tại trong vòng 60 giây kể từ lúc gọi lệnh
+                filter: (btnInteraction) => btnInteraction.user.id === interaction.user.id,
+                time: 60000
             });
 
             collector.on("collect", async (btnInteraction) => {
@@ -328,11 +333,9 @@ client.on("interactionCreate", async interaction => {
                 else if (btnInteraction.customId === "next") currentPage++;
                 else if (btnInteraction.customId === "last") currentPage = totalPages - 1;
 
-                // Cập nhật lại giao diện tin nhắn cũ một cách mượt mà
                 await btnInteraction.update(generatePageMessage(currentPage));
             });
 
-            // Khi hết thời gian 60 giây, vô hiệu hóa toàn bộ nút bấm để tránh lỗi
             collector.on("end", async () => {
                 try {
                     const start = currentPage * keysPerPage;
@@ -340,7 +343,7 @@ client.on("interactionCreate", async interaction => {
                     const pageKeys = data.slice(start, end).map((x, index) => `${start + index + 1}. ${x.name}`);
 
                     const disableEmbed = new EmbedBuilder()
-                        .setColor("#747f8d") // Đổi sang màu xám
+                        .setColor("#747f8d")
                         .setTitle("📦 Danh Sách Key (Hết hạn tương tác)")
                         .setDescription(pageKeys.join("\n"))
                         .setFooter({
@@ -355,9 +358,7 @@ client.on("interactionCreate", async interaction => {
                     );
 
                     await interaction.editReply({ embeds: [disableEmbed], components: [disabledRow] });
-                } catch (err) {
-                    // Tránh crash nếu tin nhắn gốc lỡ bị xóa trước đó
-                }
+                } catch (err) {}
             });
             return;
         }
@@ -400,6 +401,9 @@ client.on("interactionCreate", async interaction => {
                 user_id: userId,
                 user_tag: userTag
             });
+
+            // Cập nhật trạng thái số lượng key ngay lập tức
+            await updateStatus();
 
             return interaction.editReply(`<:success:1518594913179013141> Đã xóa thành công key: \`${name}\``);
         }
