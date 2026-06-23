@@ -9,8 +9,7 @@ const {
     EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
-    ButtonStyle,
-    ActivityType
+    ButtonStyle
 } = require("discord.js");
 const { createClient } = require("@supabase/supabase-js");
 const http = require("http");
@@ -57,24 +56,25 @@ function cleanKeyName(str) {
     return str.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-// --- Hàm tự động cập nhật trạng thái số lượng key ---
-async function updateStatus() {
+// --- Hàm cập nhật trạng thái Bot (Theo số lượng Key) ---
+async function updateBotStatus() {
     try {
         const { count, error } = await supabase
             .from("keys")
-            .select("*", { count: "exact", head: true });
+            .select("*", {
+                count: "exact",
+                head: true
+            });
 
-        if (error) {
-            console.error("[Status Update Error]: Fetch failed", error.message);
-            return;
-        }
+        if (error) return;
 
-        client.user.setActivity(`${count || 0} Keys`, {
-            type: ActivityType.Watching // Kiểu hiển thị: "Đang xem ... Keys"
+        client.user.setActivity({
+            name: `${count} Keys`,
+            type: 3 // 3 = Watching (Đang xem)
         });
-        console.log(`[STATUS UPDATED]: Watching ${count || 0} Keys`);
+        console.log(`[STATUS UPDATED] Đang xem ${count} Keys`);
     } catch (err) {
-        console.error("[Status Update Error]:", err);
+        console.error("Status Update Error:", err);
     }
 }
 
@@ -139,7 +139,6 @@ const commands = [
 
 
 client.on("debug", (msg) => {
-    // Thường log debug rất dài, có thể ẩn đi nếu muốn sạch console
     // console.log("[DEBUG]", msg);
 });
 
@@ -150,23 +149,6 @@ client.on("warn", (msg) => {
 client.on("error", (err) => {
     console.error("[CLIENT ERROR]");
     console.error(err);
-});
-
-client.on("shardError", (err) => {
-    console.error("[SHARD ERROR]");
-    console.error(err);
-});
-
-client.on("shardDisconnect", (event) => {
-    console.log("[SHARD DISCONNECT]", event.code);
-});
-
-client.on("shardReconnecting", () => {
-    console.log("[SHARD RECONNECTING]");
-});
-
-client.on("invalidated", () => {
-    console.log("[SESSION INVALIDATED]");
 });
 
 client.once("ready", async () => {
@@ -192,20 +174,19 @@ client.once("ready", async () => {
 
             await rest.put(
                 Routes.applicationCommands(process.env.CLIENT_ID),
-                {
-                    body: commands
-                }
+                { body: commands }
             );
 
             console.log("Slash Commands Loaded");
 
-            // --- Khởi tạo trạng thái ban đầu và đặt vòng lặp ---
-            await updateStatus();
-            setInterval(updateStatus, 60000); // Tự động cập nhật lại mỗi 60 giây
+            // --- Cập nhật trạng thái ngay khi Bot Ready ---
+            await updateBotStatus();
+            
+            // Backup update mỗi 10 phút (tùy chọn) để đảm bảo status không bị rớt
+            setInterval(updateBotStatus, 600000); 
         }
     } catch (err) {
-        console.error("Supabase Error:");
-        console.error(err);
+        console.error("Supabase Error:", err);
     }
 });
 
@@ -271,8 +252,8 @@ client.on("interactionCreate", async interaction => {
                 user_tag: userTag
             });
 
-            // Cập nhật trạng thái số lượng key ngay lập tức
-            await updateStatus();
+            // Cập nhật trạng thái
+            await updateBotStatus();
 
             return interaction.editReply(`<:success:1518594913179013141> Đã lưu key: \`${name}\``);
         }
@@ -402,8 +383,8 @@ client.on("interactionCreate", async interaction => {
                 user_tag: userTag
             });
 
-            // Cập nhật trạng thái số lượng key ngay lập tức
-            await updateStatus();
+            // Cập nhật trạng thái
+            await updateBotStatus();
 
             return interaction.editReply(`<:success:1518594913179013141> Đã xóa thành công key: \`${name}\``);
         }
@@ -455,6 +436,9 @@ client.on("interactionCreate", async interaction => {
                 user_id: userId,
                 user_tag: userTag
             });
+
+            // Cập nhật trạng thái (đề phòng đổi tên hoặc làm mới status)
+            await updateBotStatus();
 
             return interaction.editReply(`<:success:1518594913179013141> Đã chỉnh sửa thành công key: \`${name}\``);
         }
@@ -513,7 +497,7 @@ client.on("messageCreate", async message => {
         } catch (err) {
             console.error("[Ping Command Error]:", err);
         }
-        return; // Dừng lại ở đây, không quét tiếp xuống phần kiểm tra Key
+        return; 
     }
 
     // 2. Tự động trả lời key từ Database
@@ -563,21 +547,12 @@ setTimeout(() => {
     }
 }, 30000);
 
-// Heartbeat
-setInterval(() => {
-    console.log("Heartbeat Alive");
-}, 10000);
-
 // Web Server cho Render
 http.createServer((req, res) => {
-    res.writeHead(200, {
-        "Content-Type": "text/plain"
-    });
+    res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("Bot Test Online");
 }).listen(process.env.PORT || 3000, () => {
-    console.log(
-        `Web Server Running On Port ${process.env.PORT || 3000}`
-    );
+    console.log(`Web Server Running On Port ${process.env.PORT || 3000}`);
 });
 
 // Chống crash ứng dụng
