@@ -9,7 +9,9 @@ const {
     EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
-    ButtonStyle
+    ButtonStyle,
+    ActivityType,
+    WebhookClient
 } = require("discord.js");
 const { createClient } = require("@supabase/supabase-js");
 const http = require("http");
@@ -50,6 +52,12 @@ const client = new Client({
     ]
 });
 
+// --- Khởi tạo Webhook Client ---
+// Lấy URL từ ENV KEY_LOG_WEBHOOK
+const logWebhook = process.env.KEY_LOG_WEBHOOK 
+    ? new WebhookClient({ url: process.env.KEY_LOG_WEBHOOK }) 
+    : null;
+
 // --- Hàm chuẩn hóa tên Key chuẩn chỉ ---
 function cleanKeyName(str) {
     if (!str) return "";
@@ -75,6 +83,80 @@ async function updateBotStatus() {
         console.log(`[STATUS UPDATED] Đang xem ${count} Keys`);
     } catch (err) {
         console.error("Status Update Error:", err);
+    }
+}
+
+// --- Hàm gửi Log qua Webhook ---
+async function sendKeyLog({
+    action,
+    user,
+    key,
+    oldValue = null,
+    newValue = null,
+    oldName = null,
+    newName = null
+}) {
+    if (!logWebhook) return;
+    
+    try {
+        const embed = new EmbedBuilder()
+            .setColor(0x2B2D31)
+            .setTitle("📜 Phát Hiện Logs Key Mới")
+            .addFields(
+                {
+                    name: "🛠 Hành động",
+                    value: action,
+                    inline: true
+                },
+                {
+                    name: "👤 Người dùng",
+                    value: user,
+                    inline: true
+                },
+                {
+                    name: "🔑 Key",
+                    value: key || "Không có"
+                }
+            );
+
+        if (oldValue) {
+            embed.addFields({
+                name: "📄 Value Cũ",
+                value: "```" + oldValue + "```"
+            });
+        }
+
+        if (newValue) {
+            embed.addFields({
+                name: "📄 Value Mới",
+                value: "```" + newValue + "```"
+            });
+        }
+
+        if (oldName) {
+            embed.addFields({
+                name: "🏷️ Tên Key Cũ",
+                value: oldName,
+                inline: true
+            });
+        }
+
+        if (newName) {
+            embed.addFields({
+                name: "🏷️ Tên Key Mới",
+                value: newName,
+                inline: true
+            });
+        }
+
+        embed.setFooter({ text: "Auto Logs Key" });
+        embed.setTimestamp();
+
+        await logWebhook.send({
+            embeds: [embed]
+        });
+    } catch (err) {
+        console.error("[Webhook Error]:", err);
     }
 }
 
@@ -130,17 +212,9 @@ const commands = [
                 .setName("newname")
                 .setDescription("Tên mới của key (Nếu muốn đổi tên)")
                 .setRequired(false)
-        ),
-
-    new SlashCommandBuilder()
-        .setName("logkey")
-        .setDescription("Xem lịch sử thao tác key")
+        )
 ].map(cmd => cmd.toJSON());
 
-
-client.on("debug", (msg) => {
-    // console.log("[DEBUG]", msg);
-});
 
 client.on("warn", (msg) => {
     console.log("[WARN]", msg);
@@ -182,7 +256,7 @@ client.once("ready", async () => {
             // --- Cập nhật trạng thái ngay khi Bot Ready ---
             await updateBotStatus();
             
-            // Backup update mỗi 10 phút (tùy chọn) để đảm bảo status không bị rớt
+            // Backup update mỗi 10 phút để đảm bảo status không bị rớt
             setInterval(updateBotStatus, 600000); 
         }
     } catch (err) {
@@ -220,7 +294,6 @@ client.on("interactionCreate", async interaction => {
             else if (cmdName === "delkey") actionText = "Xóa";
             else if (cmdName === "editkey") actionText = "Sửa";
             else if (cmdName === "listkey") actionText = "Xem";
-            else if (cmdName === "logkey") actionText = "Xem Log";
 
             return interaction.editReply(
                 `<:failed:1518595211205283992> Bạn Không Có Quyền ${actionText} Key! (Blacklist)`
@@ -244,12 +317,12 @@ client.on("interactionCreate", async interaction => {
                 return interaction.editReply(`<:failed:1518595211205283992> Lỗi: ${error.message}`);
             }
 
-            // Ghi log hành động ADD
-            await supabase.from("key_logs").insert({
-                action: "ADD",
-                key_name: name,
-                user_id: userId,
-                user_tag: userTag
+            // Ghi log hành động ADD qua Webhook
+            await sendKeyLog({
+                action: "Add Key",
+                user: userTag,
+                key: name,
+                newValue: value
             });
 
             // Cập nhật trạng thái
@@ -366,6 +439,8 @@ client.on("interactionCreate", async interaction => {
                 return interaction.editReply(`<:failed:1518595211205283992> Không tìm thấy key \`${name}\` để xóa.`);
             }
 
+            const oldKey = target;
+
             const { error } = await supabase
                 .from("keys")
                 .delete()
@@ -375,12 +450,12 @@ client.on("interactionCreate", async interaction => {
                 return interaction.editReply(`<:failed:1518595211205283992> Lỗi khi xóa: ${error.message}`);
             }
 
-            // Ghi log hành động DELETE
-            await supabase.from("key_logs").insert({
-                action: "DELETE",
-                key_name: name,
-                user_id: userId,
-                user_tag: userTag
+            // Ghi log hành động DELETE qua Webhook
+            await sendKeyLog({
+                action: "Delete Key",
+                user: userTag,
+                key: oldKey.name,
+                oldValue: oldKey.value
             });
 
             // Cập nhật trạng thái
@@ -413,6 +488,9 @@ client.on("interactionCreate", async interaction => {
                 return interaction.editReply(`<:failed:1518595211205283992> Không tìm thấy key \`${name}\` để chỉnh sửa.`);
             }
 
+            const oldValue = target.value;
+            const oldName = target.name;
+
             const updateData = { value: newValue };
             if (newName) {
                 updateData.name = cleanKeyName(newName);
@@ -427,44 +505,23 @@ client.on("interactionCreate", async interaction => {
                 return interaction.editReply(`<:failed:1518595211205283992> Lỗi khi cập nhật: ${error.message}`);
             }
 
-            const logKeyName = newName ? `${name} -> ${updateData.name}` : name;
+            const cleanedNewName = newName ? cleanKeyName(newName) : null;
 
-            // Ghi log hành động EDIT
-            await supabase.from("key_logs").insert({
-                action: "EDIT",
-                key_name: logKeyName,
-                user_id: userId,
-                user_tag: userTag
+            // Ghi log hành động EDIT qua Webhook
+            await sendKeyLog({
+                action: "Edit Key",
+                user: userTag,
+                key: cleanedNewName || oldName,
+                oldValue,
+                newValue,
+                oldName,
+                newName: cleanedNewName
             });
 
             // Cập nhật trạng thái (đề phòng đổi tên hoặc làm mới status)
             await updateBotStatus();
 
             return interaction.editReply(`<:success:1518594913179013141> Đã chỉnh sửa thành công key: \`${name}\``);
-        }
-
-        // --- COMMAND: LOGKEY ---
-        if (interaction.commandName === "logkey") {
-            const { data, error } = await supabase
-                .from("key_logs")
-                .select("*")
-                .order("created_at", { ascending: false })
-                .limit(10);
-
-            if (error) {
-                return interaction.editReply(`<:failed:1518595211205283992> Không thể lấy danh sách nhật ký: ${error.message}`);
-            }
-
-            if (!data || data.length === 0) {
-                return interaction.editReply("<:failed:1518595211205283992> Hiện chưa có lịch sử thao tác nào.");
-            }
-
-            const logs = data.map(log => {
-                const operator = log.user_tag ? log.user_tag : log.user_id;
-                return `\`[${log.action}]\` **${log.key_name}** | Thực hiện bởi: *${operator}*`;
-            }).join("\n");
-
-            return interaction.editReply({ content: logs });
         }
 
     } catch (err) {
