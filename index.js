@@ -53,32 +53,35 @@ const client = new Client({
 });
 
 // --- Khởi tạo Webhook Client ---
-// Lấy URL từ ENV KEY_LOG_WEBHOOK
 const logWebhook = process.env.KEY_LOG_WEBHOOK 
     ? new WebhookClient({ url: process.env.KEY_LOG_WEBHOOK }) 
     : null;
 
-// --- Hàm chuẩn hóa tên Key chuẩn chỉ ---
+// --- Hàm chuẩn hóa tên Key ---
 function cleanKeyName(str) {
     if (!str) return "";
     return str.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-// --- Hàm cập nhật trạng thái Bot (Theo số lượng Key) ---
+// --- Hàm cắt chuỗi tránh lỗi Discord API (Max 1024 ký tự) ---
+function truncateString(str, max = 900) {
+    if (!str) return "";
+    if (str.length <= max) return str;
+    return `${str.substring(0, max)}\n\n*... [Đã cắt bớt vì script quá dài (${str.length} ký tự)]*`;
+}
+
+// --- Hàm cập nhật trạng thái Bot ---
 async function updateBotStatus() {
     try {
         const { count, error } = await supabase
             .from("keys")
-            .select("*", {
-                count: "exact",
-                head: true
-            });
+            .select("*", { count: "exact", head: true });
 
         if (error) return;
 
         client.user.setActivity({
             name: `${count} Keys`,
-            type: 3 // 3 = Watching (Đang xem)
+            type: 3 // Watching
         });
         console.log(`[STATUS UPDATED] Đang xem ${count} Keys`);
     } catch (err) {
@@ -86,10 +89,11 @@ async function updateBotStatus() {
     }
 }
 
-// --- Hàm gửi Log qua Webhook ---
+// --- Hàm gửi Log qua Webhook (Đã nâng cấp) ---
 async function sendKeyLog({
     action,
-    user,
+    user, // Truyền nguyên object interaction.user vào đây
+    guildName, // Tên server
     key,
     oldValue = null,
     newValue = null,
@@ -99,62 +103,49 @@ async function sendKeyLog({
     if (!logWebhook) return;
     
     try {
+        // 1. Phân loại màu theo hành động
+        let embedColor = 0x2B2D31; // Mặc định
+        if (action === "Add Key") embedColor = 0x57F287; // Xanh lá
+        else if (action === "Edit Key") embedColor = 0xFEE75C; // Vàng
+        else if (action === "Delete Key") embedColor = 0xED4245; // Đỏ
+
+        // 2. Lấy tổng số key hiện tại
+        const { count } = await supabase.from("keys").select("*", { count: "exact", head: true });
+
+        // 3. Xây dựng Embed
         const embed = new EmbedBuilder()
-            .setColor(0x2B2D31)
-            .setTitle("📜 Phát Hiện Logs Key Mới")
+            .setColor(embedColor)
+            .setAuthor({
+                name: user.tag,
+                iconURL: user.displayAvatarURL({ dynamic: true })
+            })
+            .setDescription(`⏰ **Thời gian:** <t:${Math.floor(Date.now() / 1000)}:F>`)
             .addFields(
-                {
-                    name: "🛠 Hành động",
-                    value: action,
-                    inline: true
-                },
-                {
-                    name: "👤 Người dùng",
-                    value: user,
-                    inline: true
-                },
-                {
-                    name: "🔑 Key",
-                    value: key || "Không có"
-                }
+                { name: "🛠 Hành động", value: `**${action}**`, inline: true },
+                { name: "👤 ID Người Dùng", value: `\`${user.id}\``, inline: true },
+                { name: "🏠 Server", value: guildName, inline: true },
+                { name: "🔑 Key Tác Động", value: `**${key || "Không rõ"}**`, inline: false }
             );
 
-        if (oldValue) {
-            embed.addFields({
-                name: "📄 Value Cũ",
-                value: "```" + oldValue + "```"
-            });
-        }
-
-        if (newValue) {
-            embed.addFields({
-                name: "📄 Value Mới",
-                value: "```" + newValue + "```"
-            });
-        }
-
         if (oldName) {
-            embed.addFields({
-                name: "🏷️ Tên Key Cũ",
-                value: oldName,
-                inline: true
-            });
+            embed.addFields({ name: "🏷️ Tên Key Cũ", value: oldName, inline: true });
         }
-
         if (newName) {
-            embed.addFields({
-                name: "🏷️ Tên Key Mới",
-                value: newName,
-                inline: true
-            });
+            embed.addFields({ name: "🏷️ Tên Key Mới", value: newName, inline: true });
         }
 
-        embed.setFooter({ text: "Auto Logs Key" });
-        embed.setTimestamp();
+        if (oldValue) {
+            embed.addFields({ name: "📄 Value Cũ", value: "```lua\n" + truncateString(oldValue) + "\n```" });
+        }
+        if (newValue) {
+            embed.addFields({ name: "📄 Value Mới", value: "```lua\n" + truncateString(newValue) + "\n```" });
+        }
 
-        await logWebhook.send({
-            embeds: [embed]
-        });
+        embed.addFields({ name: "📊 Tổng Keys Hệ Thống", value: `${count || 0} Keys`, inline: false });
+
+        embed.setFooter({ text: "Hệ thống Auto Logs Key" });
+
+        await logWebhook.send({ embeds: [embed] });
     } catch (err) {
         console.error("[Webhook Error]:", err);
     }
@@ -165,18 +156,8 @@ const commands = [
     new SlashCommandBuilder()
         .setName("addkey")
         .setDescription("Thêm key")
-        .addStringOption(option =>
-            option
-                .setName("name")
-                .setDescription("Tên key")
-                .setRequired(true)
-        )
-        .addStringOption(option =>
-            option
-                .setName("value")
-                .setDescription("Giá trị")
-                .setRequired(true)
-        ),
+        .addStringOption(option => option.setName("name").setDescription("Tên key").setRequired(true))
+        .addStringOption(option => option.setName("value").setDescription("Giá trị").setRequired(true)),
 
     new SlashCommandBuilder()
         .setName("listkey")
@@ -185,45 +166,19 @@ const commands = [
     new SlashCommandBuilder()
         .setName("delkey")
         .setDescription("Xóa key")
-        .addStringOption(option =>
-            option
-                .setName("name")
-                .setDescription("Tên key")
-                .setRequired(true)
-        ),
+        .addStringOption(option => option.setName("name").setDescription("Tên key").setRequired(true)),
 
     new SlashCommandBuilder()
         .setName("editkey")
         .setDescription("Chỉnh sửa key")
-        .addStringOption(option =>
-            option
-                .setName("name")
-                .setDescription("Tên key cần sửa")
-                .setRequired(true)
-        )
-        .addStringOption(option =>
-            option
-                .setName("newvalue")
-                .setDescription("Nội dung mới")
-                .setRequired(true)
-        )
-        .addStringOption(option =>
-            option
-                .setName("newname")
-                .setDescription("Tên mới của key (Nếu muốn đổi tên)")
-                .setRequired(false)
-        )
+        .addStringOption(option => option.setName("name").setDescription("Tên key cần sửa").setRequired(true))
+        .addStringOption(option => option.setName("newvalue").setDescription("Nội dung mới").setRequired(true))
+        .addStringOption(option => option.setName("newname").setDescription("Tên mới của key (Nếu muốn đổi tên)").setRequired(false))
 ].map(cmd => cmd.toJSON());
 
 
-client.on("warn", (msg) => {
-    console.log("[WARN]", msg);
-});
-
-client.on("error", (err) => {
-    console.error("[CLIENT ERROR]");
-    console.error(err);
-});
+client.on("warn", console.log);
+client.on("error", console.error);
 
 client.once("ready", async () => {
     console.log("================================");
@@ -232,10 +187,7 @@ client.once("ready", async () => {
     console.log("================================");
 
     try {
-        const { error } = await supabase
-            .from("keys")
-            .select("name")
-            .limit(1);
+        const { error } = await supabase.from("keys").select("name").limit(1);
 
         if (error) {
             console.log("Supabase Failed");
@@ -243,9 +195,7 @@ client.once("ready", async () => {
         } else {
             console.log("Supabase Connected");
 
-            // --- Đăng ký Slash Commands ---
             const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-
             await rest.put(
                 Routes.applicationCommands(process.env.CLIENT_ID),
                 { body: commands }
@@ -253,10 +203,7 @@ client.once("ready", async () => {
 
             console.log("Slash Commands Loaded");
 
-            // --- Cập nhật trạng thái ngay khi Bot Ready ---
             await updateBotStatus();
-            
-            // Backup update mỗi 10 phút để đảm bảo status không bị rớt
             setInterval(updateBotStatus, 600000); 
         }
     } catch (err) {
@@ -271,9 +218,7 @@ const BLACKLIST = [
     "1497621718041104446"
 ];
 
-const KEY_COMMAND_KEYWORDS = [
-    "key" 
-];
+const KEY_COMMAND_KEYWORDS = ["key"];
 
 // --- Xử lý Slash Commands ---
 client.on("interactionCreate", async interaction => {
@@ -283,7 +228,6 @@ client.on("interactionCreate", async interaction => {
         await interaction.deferReply();
 
         const userId = interaction.user.id;
-        const userTag = interaction.user.tag; 
         const cmdName = interaction.commandName;
 
         const isKeyCommand = KEY_COMMAND_KEYWORDS.some(keyword => cmdName.includes(keyword));
@@ -295,9 +239,7 @@ client.on("interactionCreate", async interaction => {
             else if (cmdName === "editkey") actionText = "Sửa";
             else if (cmdName === "listkey") actionText = "Xem";
 
-            return interaction.editReply(
-                `<:failed:1518595211205283992> Bạn Không Có Quyền ${actionText} Key! (Blacklist)`
-            );
+            return interaction.editReply(`<:failed:1518595211205283992> Bạn Không Có Quyền ${actionText} Key! (Blacklist)`);
         }
 
         // --- COMMAND: ADDKEY ---
@@ -309,42 +251,31 @@ client.on("interactionCreate", async interaction => {
             const name = cleanKeyName(interaction.options.getString("name"));
             const value = interaction.options.getString("value");
 
-            const { error } = await supabase
-                .from("keys")
-                .upsert({ name, value });
+            const { error } = await supabase.from("keys").upsert({ name, value });
 
             if (error) {
                 return interaction.editReply(`<:failed:1518595211205283992> Lỗi: ${error.message}`);
             }
 
-            // Ghi log hành động ADD qua Webhook
+            // Ghi log qua Webhook
             await sendKeyLog({
                 action: "Add Key",
-                user: userTag,
+                user: interaction.user,
+                guildName: interaction.guild?.name || "Tin nhắn riêng",
                 key: name,
                 newValue: value
             });
 
-            // Cập nhật trạng thái
             await updateBotStatus();
-
             return interaction.editReply(`<:success:1518594913179013141> Đã lưu key: \`${name}\``);
         }
 
-        // --- COMMAND: LISTKEY (HỆ THỐNG CHIA TRANG EMBED + BUTTON) ---
+        // --- COMMAND: LISTKEY ---
         if (interaction.commandName === "listkey") {
-            const { data, error } = await supabase
-                .from("keys")
-                .select("name")
-                .order("name", { ascending: true });
+            const { data, error } = await supabase.from("keys").select("name").order("name", { ascending: true });
 
-            if (error) {
-                return interaction.editReply(`<:failed:1518595211205283992> Lỗi: ${error.message}`);
-            }
-
-            if (!data || data.length === 0) {
-                return interaction.editReply("<:failed:1518595211205283992> Không có key nào trong hệ thống.");
-            }
+            if (error) return interaction.editReply(`<:failed:1518595211205283992> Lỗi: ${error.message}`);
+            if (!data || data.length === 0) return interaction.editReply("<:failed:1518595211205283992> Không có key nào trong hệ thống.");
 
             const totalKeys = data.length;
             const keysPerPage = 30;
@@ -360,9 +291,7 @@ client.on("interactionCreate", async interaction => {
                     .setColor("#5865F2")
                     .setTitle("📦 Danh Sách Key")
                     .setDescription(pageKeys.join("\n"))
-                    .setFooter({
-                        text: `Trang ${page + 1}/${totalPages} | Key: ${start + 1}-${end}/${totalKeys}`
-                    });
+                    .setFooter({ text: `Trang ${page + 1}/${totalPages} | Key: ${start + 1}-${end}/${totalKeys}` });
 
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId("first").setEmoji("⏪").setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
@@ -386,7 +315,6 @@ client.on("interactionCreate", async interaction => {
                 else if (btnInteraction.customId === "prev") currentPage--;
                 else if (btnInteraction.customId === "next") currentPage++;
                 else if (btnInteraction.customId === "last") currentPage = totalPages - 1;
-
                 await btnInteraction.update(generatePageMessage(currentPage));
             });
 
@@ -400,9 +328,7 @@ client.on("interactionCreate", async interaction => {
                         .setColor("#747f8d")
                         .setTitle("📦 Danh Sách Key (Hết hạn tương tác)")
                         .setDescription(pageKeys.join("\n"))
-                        .setFooter({
-                            text: `Trang ${currentPage + 1}/${totalPages} | Key: ${start + 1}-${end}/${totalKeys}`
-                        });
+                        .setFooter({ text: `Trang ${currentPage + 1}/${totalPages} | Key: ${start + 1}-${end}/${totalKeys}` });
 
                     const disabledRow = new ActionRowBuilder().addComponents(
                         new ButtonBuilder().setCustomId("first_d").setEmoji("⏪").setStyle(ButtonStyle.Secondary).setDisabled(true),
@@ -424,43 +350,28 @@ client.on("interactionCreate", async interaction => {
             }
 
             const name = cleanKeyName(interaction.options.getString("name"));
+            const { data: allKeys, error: fetchError } = await supabase.from("keys").select("*");
 
-            const { data: allKeys, error: fetchError } = await supabase
-                .from("keys")
-                .select("*");
-
-            if (fetchError) {
-                return interaction.editReply(`<:failed:1518595211205283992> Lỗi đồng bộ dữ liệu: ${fetchError.message}`);
-            }
+            if (fetchError) return interaction.editReply(`<:failed:1518595211205283992> Lỗi đồng bộ dữ liệu: ${fetchError.message}`);
 
             const target = allKeys?.find(k => cleanKeyName(k.name) === name);
-
-            if (!target) {
-                return interaction.editReply(`<:failed:1518595211205283992> Không tìm thấy key \`${name}\` để xóa.`);
-            }
+            if (!target) return interaction.editReply(`<:failed:1518595211205283992> Không tìm thấy key \`${name}\` để xóa.`);
 
             const oldKey = target;
+            const { error } = await supabase.from("keys").delete().eq("name", target.name);
 
-            const { error } = await supabase
-                .from("keys")
-                .delete()
-                .eq("name", target.name);
+            if (error) return interaction.editReply(`<:failed:1518595211205283992> Lỗi khi xóa: ${error.message}`);
 
-            if (error) {
-                return interaction.editReply(`<:failed:1518595211205283992> Lỗi khi xóa: ${error.message}`);
-            }
-
-            // Ghi log hành động DELETE qua Webhook
+            // Ghi log qua Webhook
             await sendKeyLog({
                 action: "Delete Key",
-                user: userTag,
+                user: interaction.user,
+                guildName: interaction.guild?.name || "Tin nhắn riêng",
                 key: oldKey.name,
                 oldValue: oldKey.value
             });
 
-            // Cập nhật trạng thái
             await updateBotStatus();
-
             return interaction.editReply(`<:success:1518594913179013141> Đã xóa thành công key: \`${name}\``);
         }
 
@@ -474,43 +385,29 @@ client.on("interactionCreate", async interaction => {
             const newName = interaction.options.getString("newname");
             const newValue = interaction.options.getString("newvalue");
 
-            const { data: allKeys, error: fetchError } = await supabase
-                .from("keys")
-                .select("*");
+            const { data: allKeys, error: fetchError } = await supabase.from("keys").select("*");
 
-            if (fetchError) {
-                return interaction.editReply(`<:failed:1518595211205283992> Lỗi đồng bộ dữ liệu: ${fetchError.message}`);
-            }
+            if (fetchError) return interaction.editReply(`<:failed:1518595211205283992> Lỗi đồng bộ: ${fetchError.message}`);
 
             const target = allKeys?.find(k => cleanKeyName(k.name) === name);
-
-            if (!target) {
-                return interaction.editReply(`<:failed:1518595211205283992> Không tìm thấy key \`${name}\` để chỉnh sửa.`);
-            }
+            if (!target) return interaction.editReply(`<:failed:1518595211205283992> Không tìm thấy key \`${name}\`.`);
 
             const oldValue = target.value;
             const oldName = target.name;
 
             const updateData = { value: newValue };
-            if (newName) {
-                updateData.name = cleanKeyName(newName);
-            }
+            if (newName) updateData.name = cleanKeyName(newName);
 
-            const { error } = await supabase
-                .from("keys")
-                .update(updateData)
-                .eq("name", target.name);
-
-            if (error) {
-                return interaction.editReply(`<:failed:1518595211205283992> Lỗi khi cập nhật: ${error.message}`);
-            }
+            const { error } = await supabase.from("keys").update(updateData).eq("name", target.name);
+            if (error) return interaction.editReply(`<:failed:1518595211205283992> Lỗi khi cập nhật: ${error.message}`);
 
             const cleanedNewName = newName ? cleanKeyName(newName) : null;
 
-            // Ghi log hành động EDIT qua Webhook
+            // Ghi log qua Webhook
             await sendKeyLog({
                 action: "Edit Key",
-                user: userTag,
+                user: interaction.user,
+                guildName: interaction.guild?.name || "Tin nhắn riêng",
                 key: cleanedNewName || oldName,
                 oldValue,
                 newValue,
@@ -518,9 +415,7 @@ client.on("interactionCreate", async interaction => {
                 newName: cleanedNewName
             });
 
-            // Cập nhật trạng thái (đề phòng đổi tên hoặc làm mới status)
             await updateBotStatus();
-
             return interaction.editReply(`<:success:1518594913179013141> Đã chỉnh sửa thành công key: \`${name}\``);
         }
 
@@ -532,15 +427,13 @@ client.on("interactionCreate", async interaction => {
     }
 });
 
-// --- Sự kiện messageCreate: Xử lý lệnh Prefix (.ping) và Tự động trả lời key ---
+// --- Sự kiện messageCreate ---
 client.on("messageCreate", async message => {
     if (message.author.bot) return;
 
-    // 1. Kiểm tra lệnh .ping
     if (message.content.toLowerCase() === ".ping") {
         try {
             const msg = await message.reply("🏓 Đang kiểm tra...");
-
             const apiPing = client.ws.ping;
             const botPing = msg.createdTimestamp - message.createdTimestamp;
 
@@ -557,15 +450,11 @@ client.on("messageCreate", async message => {
         return; 
     }
 
-    // 2. Tự động trả lời key từ Database
     const searchName = cleanKeyName(message.content);
     if (!searchName) return;
 
     try {
-        const { data: allKeys, error } = await supabase
-            .from("keys")
-            .select("name, value");
-
+        const { data: allKeys, error } = await supabase.from("keys").select("name, value");
         if (error) {
             console.error("[Supabase Query Error]:", error.message);
             return;
@@ -583,7 +472,7 @@ client.on("messageCreate", async message => {
     }
 });
 
-// Login & Xử lý Timeout Log chuẩn xác
+// Login & Timeout check
 let loggedIn = false;
 
 (async () => {
@@ -593,18 +482,14 @@ let loggedIn = false;
         loggedIn = true;
         console.log("LOGIN SUCCESS");
     } catch (err) {
-        console.error("LOGIN FAILED:");
-        console.error(err);
+        console.error("LOGIN FAILED:", err);
     }
 })();
 
 setTimeout(() => {
-    if (!loggedIn) {
-        console.log("LOGIN TIMEOUT 30 SECONDS - Tiến trình kết nối vẫn đang bị treo hoặc Token lỗi!");
-    }
+    if (!loggedIn) console.log("LOGIN TIMEOUT 30 SECONDS - Token lỗi hoặc mạng có vấn đề!");
 }, 30000);
 
-// Web Server cho Render
 http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("Bot Test Online");
@@ -612,6 +497,5 @@ http.createServer((req, res) => {
     console.log(`Web Server Running On Port ${process.env.PORT || 3000}`);
 });
 
-// Chống crash ứng dụng
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
