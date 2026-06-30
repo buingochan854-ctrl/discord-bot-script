@@ -13,6 +13,7 @@ const {
     ActivityType,
     WebhookClient
 } = require("discord.js");
+const { joinVoiceChannel } = require("@discordjs/voice"); // Import hàm joinVoiceChannel
 const { createClient } = require("@supabase/supabase-js");
 const http = require("http");
 const https = require("https");
@@ -23,6 +24,10 @@ console.log("Node Version:", process.version);
 console.log("TOKEN EXISTS:", !!process.env.TOKEN);
 console.log("TOKEN LENGTH:", process.env.TOKEN?.length);
 console.log("================================");
+
+// --- Constants Voice 24/7 ---
+const TARGET_GUILD_ID = "1466331775931383853";
+const TARGET_VOICE_CHANNEL_ID = "1519747573873643641";
 
 // Supabase
 const supabase = createClient(
@@ -48,7 +53,8 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates // Bắt buộc phải có intent này để nhận diện trạng thái Voice
     ]
 });
 
@@ -89,11 +95,11 @@ async function updateBotStatus() {
     }
 }
 
-// --- Hàm gửi Log qua Webhook (Đã nâng cấp) ---
+// --- Hàm gửi Log qua Webhook ---
 async function sendKeyLog({
     action,
-    user, // Truyền nguyên object interaction.user vào đây
-    guildName, // Tên server
+    user,
+    guildName,
     key,
     oldValue = null,
     newValue = null,
@@ -103,16 +109,13 @@ async function sendKeyLog({
     if (!logWebhook) return;
     
     try {
-        // 1. Phân loại màu theo hành động
-        let embedColor = 0x2B2D31; // Mặc định
-        if (action === "Add Key") embedColor = 0x57F287; // Xanh lá
-        else if (action === "Edit Key") embedColor = 0xFEE75C; // Vàng
-        else if (action === "Delete Key") embedColor = 0xED4245; // Đỏ
+        let embedColor = 0x2B2D31;
+        if (action === "Add Key") embedColor = 0x57F287; 
+        else if (action === "Edit Key") embedColor = 0xFEE75C; 
+        else if (action === "Delete Key") embedColor = 0xED4245; 
 
-        // 2. Lấy tổng số key hiện tại
         const { count } = await supabase.from("keys").select("*", { count: "exact", head: true });
 
-        // 3. Xây dựng Embed
         const embed = new EmbedBuilder()
             .setColor(embedColor)
             .setAuthor({
@@ -127,22 +130,12 @@ async function sendKeyLog({
                 { name: "🔑 Key Tác Động", value: `**${key || "Không rõ"}**`, inline: false }
             );
 
-        if (oldName) {
-            embed.addFields({ name: "🏷️ Tên Key Cũ", value: oldName, inline: true });
-        }
-        if (newName) {
-            embed.addFields({ name: "🏷️ Tên Key Mới", value: newName, inline: true });
-        }
-
-        if (oldValue) {
-            embed.addFields({ name: "📄 Value Cũ", value: "```lua\n" + truncateString(oldValue) + "\n```" });
-        }
-        if (newValue) {
-            embed.addFields({ name: "📄 Value Mới", value: "```lua\n" + truncateString(newValue) + "\n```" });
-        }
+        if (oldName) embed.addFields({ name: "🏷️ Tên Key Cũ", value: oldName, inline: true });
+        if (newName) embed.addFields({ name: "🏷️ Tên Key Mới", value: newName, inline: true });
+        if (oldValue) embed.addFields({ name: "📄 Value Cũ", value: "```lua\n" + truncateString(oldValue) + "\n```" });
+        if (newValue) embed.addFields({ name: "📄 Value Mới", value: "```lua\n" + truncateString(newValue) + "\n```" });
 
         embed.addFields({ name: "📊 Tổng Keys Hệ Thống", value: `${count || 0} Keys`, inline: false });
-
         embed.setFooter({ text: "Hệ thống Auto Logs Key" });
 
         await logWebhook.send({ embeds: [embed] });
@@ -186,6 +179,30 @@ client.once("ready", async () => {
     console.log("BOT:", client.user.tag);
     console.log("================================");
 
+    // --- CẤU HÌNH TREO KÊNH THOẠI 24/7 ---
+    try {
+        const guild = client.guilds.cache.get(TARGET_GUILD_ID);
+        if (guild) {
+            const channel = guild.channels.cache.get(TARGET_VOICE_CHANNEL_ID);
+            if (channel) {
+                joinVoiceChannel({
+                    channelId: channel.id,
+                    guildId: guild.id,
+                    adapterCreator: guild.voiceAdapterCreator,
+                    selfMute: true, // Tắt mic
+                    selfDeaf: true  // Tắt âm thanh
+                });
+                console.log("[VOICE] Đã tự động tham gia kênh thoại 24/7!");
+            } else {
+                console.log("[VOICE] Không tìm thấy kênh thoại với ID đã cung cấp.");
+            }
+        } else {
+            console.log("[VOICE] Không tìm thấy server (Guild) với ID đã cung cấp.");
+        }
+    } catch (err) {
+        console.error("[VOICE JOIN ERROR]:", err);
+    }
+
     try {
         const { error } = await supabase.from("keys").select("name").limit(1);
 
@@ -208,6 +225,32 @@ client.once("ready", async () => {
         }
     } catch (err) {
         console.error("Supabase Error:", err);
+    }
+});
+
+// --- SỰ KIỆN TỰ ĐỘNG KẾT NỐI LẠI KÊNH THOẠI ---
+client.on("voiceStateUpdate", (oldState, newState) => {
+    // Chỉ quan tâm đến trạng thái của chính Bot này
+    if (oldState.member.id !== client.user.id) return;
+
+    // Nếu bot bị ngắt kết nối khỏi kênh thoại (newState.channel là null)
+    if (!newState.channel) {
+        console.log("[VOICE] Bot bị ngắt kết nối khỏi kênh thoại. Đang thử kết nối lại...");
+        
+        const guild = client.guilds.cache.get(TARGET_GUILD_ID);
+        if (!guild) return;
+        
+        const channel = guild.channels.cache.get(TARGET_VOICE_CHANNEL_ID);
+        if (!channel) return;
+
+        joinVoiceChannel({
+            channelId: channel.id,
+            guildId: guild.id,
+            adapterCreator: guild.voiceAdapterCreator,
+            selfMute: true,
+            selfDeaf: true
+        });
+        console.log("[VOICE] Đã kết nối lại kênh thoại thành công.");
     }
 });
 
@@ -257,7 +300,6 @@ client.on("interactionCreate", async interaction => {
                 return interaction.editReply(`<:failed:1518595211205283992> Lỗi: ${error.message}`);
             }
 
-            // Ghi log qua Webhook
             await sendKeyLog({
                 action: "Add Key",
                 user: interaction.user,
@@ -362,7 +404,6 @@ client.on("interactionCreate", async interaction => {
 
             if (error) return interaction.editReply(`<:failed:1518595211205283992> Lỗi khi xóa: ${error.message}`);
 
-            // Ghi log qua Webhook
             await sendKeyLog({
                 action: "Delete Key",
                 user: interaction.user,
@@ -403,7 +444,6 @@ client.on("interactionCreate", async interaction => {
 
             const cleanedNewName = newName ? cleanKeyName(newName) : null;
 
-            // Ghi log qua Webhook
             await sendKeyLog({
                 action: "Edit Key",
                 user: interaction.user,
