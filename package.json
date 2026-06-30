@@ -1,21 +1,26 @@
 {
   "name": "discord-key-bot",
-  "version": "1.0.0",
-  "description": "Discord Key Bot with Supabase, Voice and yt-dlp",
+  "version": "2.0.0",
+  "description": "Discord Key Bot + YouTube Downloader",
   "main": "index.js",
-  "type": "commonjs",
-  "engines": {
-    "node": "22.x"
-  },
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "postinstall": "node node_modules/yt-dlp-wrap/scripts/download.js"
   },
   "dependencies": {
-    "@discordjs/voice": "^0.18.0",
-    "@supabase/supabase-js": "^2.56.0",
-    "discord.js": "^14.26.4",
+    "@discordjs/voice": "^0.19.0",
+    "@supabase/supabase-js": "^2.50.2",
+    "discord.js": "^14.22.1",
+    "dotenv": "^17.2.1",
     "ffmpeg-static": "^5.2.0",
-    "prism-media": "^1.3.5",
+    "fluent-ffmpeg": "^2.1.3",
     "yt-dlp-wrap": "^2.3.12"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
