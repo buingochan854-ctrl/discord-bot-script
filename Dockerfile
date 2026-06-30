@@ -1,21 +1,21 @@
-# Sử dụng hình ảnh Node.js chính thức làm nền tảng
-FROM node:18-alpine
+FROM node:22-alpine
 
-# Tạo thư mục làm việc trong container
 WORKDIR /app
 
-# Copy các file quản lý thư viện vào trước để cache
+# Cài Python, pip và ffmpeg
+RUN apk add --no-cache python3 py3-pip ffmpeg
+
+# Cài yt-dlp
+RUN pip3 install --break-system-packages yt-dlp
+
 COPY package*.json ./
 
-# Cài đặt các thư viện (dependencies)
 RUN npm install
 
-# Copy toàn bộ code còn lại vào container
 COPY . .
 
-# Hugging Face Spaces mặc định chạy ở cổng 7860
-ENV PORT=7860
-EXPOSE 7860
+ENV PORT=10000
 
-# Lệnh để khởi chạy ứng dụng
-CMD ["npm", "start"] 
+EXPOSE 10000
+
+CMD ["npm", "start"]
