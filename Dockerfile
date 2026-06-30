@@ -1,21 +1,19 @@
-FROM node:22-alpine
+FROM node:20-bookworm
 
 WORKDIR /app
 
-# Cài Python, pip và ffmpeg
-RUN apk add --no-cache python3 py3-pip ffmpeg
-
-# Cài yt-dlp
-RUN pip3 install --break-system-packages yt-dlp
-
 COPY package*.json ./
+
+RUN apt-get update && \
+    apt-get install -y ffmpeg python3 && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN npm install
 
 COPY . .
 
-ENV PORT=10000
+RUN mkdir -p downloads
 
-EXPOSE 10000
+ENV NODE_ENV=production
 
-CMD ["npm", "start"]
+CMD ["npm","start"]
