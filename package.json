@@ -1,25 +1,27 @@
 {
   "name": "discord-key-bot-v2",
   "version": "2.0.0",
-  "description": "Discord Key Bot with Supabase, Voice 24/7, Webhook Logs and Video Downloader",
+  "description": "Discord Key Bot + Video Downloader",
   "main": "index.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
-  },
-  "engines": {
-    "node": ">=20"
+    "test": "node test.js",
+    "test:tiktok": "node test.js"
   },
   "dependencies": {
     "@discordjs/voice": "^0.19.0",
-    "@supabase/supabase-js": "^2.57.0",
-    "discord.js": "^14.26.0",
+    "@supabase/supabase-js": "^2.57.2",
+    "axios": "^1.11.0",
+    "discord.js": "^14.26.4",
     "dotenv": "^17.2.1",
+    "express": "^5.1.0",
     "ffmpeg-static": "^5.2.0",
-    "ffprobe-static": "^3.1.0",
+    "file-type": "^20.5.0",
     "fluent-ffmpeg": "^2.1.3",
-    "ws": "^8.18.3",
-    "yt-dlp-wrap": "^2.3.12"
+    "form-data": "^4.0.4",
+    "ws": "^8.18.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
