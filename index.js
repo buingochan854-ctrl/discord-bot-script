@@ -20,6 +20,11 @@ const https = require("https");
 
 const supabase = require("./database/supabase");
 
+const {
+    cleanKeyName,
+    truncateString
+} = require("./utils/helpers");
+
 const { updateBotStatus } = require("./utils/status");
 
 console.log("================================");
@@ -60,19 +65,6 @@ const client = new Client({
 const logWebhook = process.env.KEY_LOG_WEBHOOK 
     ? new WebhookClient({ url: process.env.KEY_LOG_WEBHOOK }) 
     : null;
-
-// --- Hàm chuẩn hóa tên Key ---
-function cleanKeyName(str) {
-    if (!str) return "";
-    return str.trim().replace(/\s+/g, " ").toLowerCase();
-}
-
-// --- Hàm cắt chuỗi tránh lỗi Discord API (Max 1024 ký tự) ---
-function truncateString(str, max = 900) {
-    if (!str) return "";
-    if (str.length <= max) return str;
-    return `${str.substring(0, max)}\n\n*... [Đã cắt bớt vì script quá dài (${str.length} ký tự)]*`;
-}
 
 // --- Hàm gửi Log qua Webhook ---
 async function sendKeyLog({
