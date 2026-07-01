@@ -17,6 +17,7 @@ const { joinVoiceChannel } = require("@discordjs/voice"); // Import hàm joinVoi
 const { createClient } = require("@supabase/supabase-js");
 const http = require("http");
 const https = require("https");
+const { updateBotStatus } = require("./utils/status");
 
 console.log("================================");
 console.log("Discord.js Version:", version);
@@ -74,25 +75,6 @@ function truncateString(str, max = 900) {
     if (!str) return "";
     if (str.length <= max) return str;
     return `${str.substring(0, max)}\n\n*... [Đã cắt bớt vì script quá dài (${str.length} ký tự)]*`;
-}
-
-// --- Hàm cập nhật trạng thái Bot ---
-async function updateBotStatus() {
-    try {
-        const { count, error } = await supabase
-            .from("keys")
-            .select("*", { count: "exact", head: true });
-
-        if (error) return;
-
-        client.user.setActivity({
-            name: `${count} Keys`,
-            type: 3 // Watching
-        });
-        console.log(`[STATUS UPDATED] Đang xem ${count} Keys`);
-    } catch (err) {
-        console.error("Status Update Error:", err);
-    }
 }
 
 // --- Hàm gửi Log qua Webhook ---
@@ -220,8 +202,10 @@ client.once("ready", async () => {
 
             console.log("Slash Commands Loaded");
 
-            await updateBotStatus();
-            setInterval(updateBotStatus, 600000); 
+            await updateBotStatus(client, supabase);
+            setInterval(() => {
+                updateBotStatus(client, supabase);
+            }, 600000); 
         }
     } catch (err) {
         console.error("Supabase Error:", err);
@@ -308,7 +292,7 @@ client.on("interactionCreate", async interaction => {
                 newValue: value
             });
 
-            await updateBotStatus();
+            await updateBotStatus(client, supabase);
             return interaction.editReply(`<:success:1518594913179013141> Đã lưu key: \`${name}\``);
         }
 
@@ -412,7 +396,7 @@ client.on("interactionCreate", async interaction => {
                 oldValue: oldKey.value
             });
 
-            await updateBotStatus();
+            await updateBotStatus(client, supabase);
             return interaction.editReply(`<:success:1518594913179013141> Đã xóa thành công key: \`${name}\``);
         }
 
@@ -455,7 +439,7 @@ client.on("interactionCreate", async interaction => {
                 newName: cleanedNewName
             });
 
-            await updateBotStatus();
+            await updateBotStatus(client, supabase);
             return interaction.editReply(`<:success:1518594913179013141> Đã chỉnh sửa thành công key: \`${name}\``);
         }
 
