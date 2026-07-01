@@ -11,7 +11,6 @@ const {
     ButtonBuilder,
     ButtonStyle,
     ActivityType,
-    WebhookClient
 } = require("discord.js");
 const { joinVoiceChannel } = require("@discordjs/voice");
 
@@ -24,6 +23,8 @@ const {
     cleanKeyName,
     truncateString
 } = require("./utils/helpers");
+
+const { sendKeyLog } = require("./utils/webhook");
 
 const { updateBotStatus } = require("./utils/status");
 
@@ -61,59 +62,7 @@ const client = new Client({
     ]
 });
 
-// --- Khởi tạo Webhook Client ---
-const logWebhook = process.env.KEY_LOG_WEBHOOK 
-    ? new WebhookClient({ url: process.env.KEY_LOG_WEBHOOK }) 
-    : null;
-
-// --- Hàm gửi Log qua Webhook ---
-async function sendKeyLog({
-    action,
-    user,
-    guildName,
-    key,
-    oldValue = null,
-    newValue = null,
-    oldName = null,
-    newName = null
-}) {
-    if (!logWebhook) return;
-    
-    try {
-        let embedColor = 0x2B2D31;
-        if (action === "Add Key") embedColor = 0x57F287; 
-        else if (action === "Edit Key") embedColor = 0xFEE75C; 
-        else if (action === "Delete Key") embedColor = 0xED4245; 
-
-        const { count } = await supabase.from("keys").select("*", { count: "exact", head: true });
-
-        const embed = new EmbedBuilder()
-            .setColor(embedColor)
-            .setAuthor({
-                name: user.tag,
-                iconURL: user.displayAvatarURL({ dynamic: true })
-            })
-            .setDescription(`⏰ **Thời gian:** <t:${Math.floor(Date.now() / 1000)}:F>`)
-            .addFields(
-                { name: "🛠 Hành động", value: `**${action}**`, inline: true },
-                { name: "👤 ID Người Dùng", value: `\`${user.id}\``, inline: true },
-                { name: "🏠 Server", value: guildName, inline: true },
-                { name: "🔑 Key Tác Động", value: `**${key || "Không rõ"}**`, inline: false }
-            );
-
-        if (oldName) embed.addFields({ name: "🏷️ Tên Key Cũ", value: oldName, inline: true });
-        if (newName) embed.addFields({ name: "🏷️ Tên Key Mới", value: newName, inline: true });
-        if (oldValue) embed.addFields({ name: "📄 Value Cũ", value: "```lua\n" + truncateString(oldValue) + "\n```" });
-        if (newValue) embed.addFields({ name: "📄 Value Mới", value: "```lua\n" + truncateString(newValue) + "\n```" });
-
-        embed.addFields({ name: "📊 Tổng Keys Hệ Thống", value: `${count || 0} Keys`, inline: false });
-        embed.setFooter({ text: "Hệ thống Auto Logs Key" });
-
-        await logWebhook.send({ embeds: [embed] });
-    } catch (err) {
-        console.error("[Webhook Error]:", err);
-    }
-}
+require("./events/messageCreate")(client);
 
 // --- Khai báo Commands ---
 const commands = [
@@ -144,7 +93,7 @@ const commands = [
 client.on("warn", console.log);
 client.on("error", console.error);
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
     console.log("================================");
     console.log("BOT READY");
     console.log("BOT:", client.user.tag);
@@ -435,51 +384,6 @@ client.on("interactionCreate", async interaction => {
         if (interaction.deferred) {
             interaction.editReply("<:failed:1518595211205283992> Đã xảy ra lỗi không mong muốn trong hệ thống.");
         }
-    }
-});
-
-// --- Sự kiện messageCreate ---
-client.on("messageCreate", async message => {
-    if (message.author.bot) return;
-
-    if (message.content.toLowerCase() === ".ping") {
-        try {
-            const msg = await message.reply("🏓 Đang kiểm tra...");
-            const apiPing = client.ws.ping;
-            const botPing = msg.createdTimestamp - message.createdTimestamp;
-
-            let status = "🟢 Ổn định";
-            if (apiPing > 200) status = "🟡 Khá";
-            if (apiPing > 500) status = "🔴 Chậm";
-
-            await msg.edit({
-                content: `🏓 **Pong!**\n\n📡 API Ping: **${apiPing}ms**\n⚡ Bot Ping: **${botPing}ms**\n📶 Trạng thái: **${status}**\n\n🤖 Bot: **${client.user.tag}**\n🟢 Uptime: **${Math.floor(process.uptime())} giây**\n💾 RAM: **${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB**`
-            });
-        } catch (err) {
-            console.error("[Ping Command Error]:", err);
-        }
-        return; 
-    }
-
-    const searchName = cleanKeyName(message.content);
-    if (!searchName) return;
-
-    try {
-        const { data: allKeys, error } = await supabase.from("keys").select("name, value");
-        if (error) {
-            console.error("[Supabase Query Error]:", error.message);
-            return;
-        }
-
-        const target = allKeys?.find(k => cleanKeyName(k.name) === searchName);
-
-        if (target && target.value) {
-            console.log(`[FOUND KEY]: "${searchName}" -> Trả về giá trị.`);
-            await message.reply(target.value);
-        }
-
-    } catch (err) {
-        console.error("[Message Event Crash Prevention]:", err);
     }
 });
 
