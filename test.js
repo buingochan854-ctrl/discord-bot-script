@@ -1,8 +1,10 @@
-const tiktok = require("./video/providers/tiktok");
+const downloader = require("./video/downloader");
 
 (async () => {
 
-    const result = await tiktok("https://vt.tiktok.com/xxxxxxxx");
+    const result = await downloader(
+        "LINK_TIKTOK"
+    );
 
     console.log(result);
 
