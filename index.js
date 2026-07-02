@@ -1,3 +1,13 @@
+const { exec } = require("child_process");
+
+exec("yt-dlp --version", (err, stdout, stderr) => {
+    console.log("YT-DLP VERSION:", stdout || stderr || err?.message);
+});
+
+exec("ffmpeg -version", (err, stdout, stderr) => {
+    console.log("FFMPEG:", stdout?.split("\n")[0] || stderr || err?.message);
+});
+
 const { 
     Client, 
     GatewayIntentBits, 
