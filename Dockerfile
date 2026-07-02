@@ -1,18 +1,32 @@
+# ==========================
+# Dockerfile
+# Discord Bot (Node.js 20)
+# ==========================
+
 FROM node:20-bookworm
 
+# Thư mục làm việc
 WORKDIR /app
 
-# Copy package
+# Cài FFmpeg
+RUN apt-get update && \
+    apt-get install -y ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy package trước để cache
 COPY package*.json ./
 
-# Cài package Node.js
+# Cài dependencies
 RUN npm install
 
-# Copy source
+# Copy toàn bộ source
 COPY . .
 
-# Port Render
-EXPOSE 10000
+# Tạo thư mục cần thiết
+RUN mkdir -p downloads
 
-# Khởi động bot
+# Biến môi trường
+ENV NODE_ENV=production
+
+# Chạy bot
 CMD ["npm", "start"]
