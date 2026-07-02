@@ -1,23 +1,30 @@
-FROM node:20-bullseye
+FROM node:20-bookworm
 
 WORKDIR /app
 
+# Cài FFmpeg + Python + pip
 RUN apt-get update && \
     apt-get install -y \
         ffmpeg \
         python3 \
-        wget && \
-    wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
-        -O /usr/local/bin/yt-dlp && \
-    chmod a+rx /usr/local/bin/yt-dlp && \
+        python3-pip && \
+    python3 -m pip install --break-system-packages -U yt-dlp && \
     rm -rf /var/lib/apt/lists/*
 
+# Copy package
 COPY package*.json ./
 
+# Cài package Node.js
 RUN npm install
 
+# Copy source
 COPY . .
 
+# Thư mục lưu video tạm
 RUN mkdir -p downloads
 
-CMD ["npm","start"]
+# Port Render
+EXPOSE 10000
+
+# Khởi động bot
+CMD ["npm", "start"]
