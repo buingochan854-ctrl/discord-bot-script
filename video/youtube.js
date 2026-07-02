@@ -82,7 +82,7 @@ module.exports = async function downloadYoutube(message, url) {
 
     } catch (err) {
         console.error("====== COBALT ERROR ======");
-        console.error(err);
+        console.error("Full error:", err);
         
         let errorMessage = "❌ Có lỗi xảy ra!";
 
@@ -100,11 +100,19 @@ module.exports = async function downloadYoutube(message, url) {
                 errorMessage = `❌ API trả về lỗi ${err.response.status}`;
             }
         } else if (err.code === 'ECONNABORTED') {
-            errorMessage = "❌ Timeout - Video tải quá lâu.";
-        } else if (err.code === 'ENOTFOUND') {
-            errorMessage = "❌ Không thể kết nối đến API.";
+            errorMessage = `❌ Timeout - Video tải quá lâu.\n\`${err.message}\``;
+        } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
+            errorMessage = `❌ Không thể kết nối đến API.\n\`${err.code}: ${err.message}\``;
+            console.error("Connection error details:", {
+                code: err.code,
+                errno: err.errno,
+                syscall: err.syscall,
+                hostname: err.hostname
+            });
+        } else if (err.code === 'ETIMEDOUT') {
+            errorMessage = `❌ Kết nối timeout.\n\`${err.message}\``;
         } else if (err.message) {
-            errorMessage = `❌ Lỗi: ${err.message}`;
+            errorMessage = `❌ Lỗi: \`${err.message}\`\n\`Code: ${err.code || "N/A"}\``;
         }
 
         await loading.edit(errorMessage).catch(() => {});
