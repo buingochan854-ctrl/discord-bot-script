@@ -2,86 +2,98 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 
-const {
-    COBALT_API,
-    MAX_UPLOAD_SIZE
-} = require("../config");
-
-module.exports = async function (message, url) {
-
-    const loading = await message.reply("📥 Đang lấy video...");
+module.exports = async function downloadYoutube(message, url) {
+    const loading = await message.reply("📥 Đang tải video...");
 
     try {
+        console.log("========== COBALT ==========");
+        console.log("URL:", url);
 
-        const { data } = await axios.post(
-            COBALT_API,
+        const response = await axios.post(
+            "https://co.wuk.sh/api/json",
             {
-                url,
-                videoQuality: "720",
-                youtubeVideoCodec: "h264"
+                url: url,
+                vQuality: "720",
+                filenamePattern: "basic",
+                isAudioOnly: false
             },
             {
                 headers: {
-                    Accept: "application/json",
-                    "Content-Type": "application/json"
-                }
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                },
+                timeout: 30000
             }
         );
 
-        if (!data.url)
-            return loading.edit("❌ Không lấy được video.");
+        console.log("Status:", response.status);
+        console.log("Response:", response.data);
 
-        const file = path.join(
+        if (!response.data || !response.data.url) {
+            return loading.edit("❌ API không trả về link tải.");
+        }
+
+        const downloadUrl = response.data.url;
+
+        console.log("Download URL:", downloadUrl);
+
+        const output = path.join(
             "downloads",
             `${Date.now()}.mp4`
         );
 
-        const response = await axios({
-            url: data.url,
+        const writer = fs.createWriteStream(output);
+
+        const video = await axios({
+            url: downloadUrl,
             method: "GET",
-            responseType: "stream"
+            responseType: "stream",
+            timeout: 60000
         });
 
-        const writer = fs.createWriteStream(file);
-
-        response.data.pipe(writer);
+        video.data.pipe(writer);
 
         writer.on("finish", async () => {
+            try {
+                const size = fs.statSync(output).size;
 
-            const size = fs.statSync(file).size;
+                console.log("Downloaded:", size, "bytes");
 
-            if (size <= MAX_UPLOAD_SIZE) {
+                if (size > 25 * 1024 * 1024) {
+                    fs.unlinkSync(output);
+
+                    return loading.edit(
+                        `📦 Video quá lớn.\n${downloadUrl}`
+                    );
+                }
 
                 await message.reply({
-                    files: [file]
+                    files: [output]
                 });
 
-                fs.unlinkSync(file);
+                fs.unlinkSync(output);
 
-                return loading.delete().catch(() => {});
-
+                loading.delete().catch(() => {});
+            } catch (err) {
+                console.error(err);
+                loading.edit("❌ Không thể gửi video.");
             }
-
-            fs.unlinkSync(file);
-
-            loading.edit(
-                `📦 Video quá lớn.\n\n⬇ ${data.url}`
-            );
-
         });
 
-        writer.on("error", () => {
-
-            loading.edit("❌ Không tải được video.");
-
+        writer.on("error", err => {
+            console.error(err);
+            loading.edit("❌ Lỗi ghi file.");
         });
 
-    } catch (err) {
+    catch (err) {
+    console.error("====== COBALT ERROR ======");
 
-        console.log(err.response?.data || err);
-
-        loading.edit("❌ API Cobalt lỗi.");
-
+    if (err.response) {
+        console.error("Status:", err.response.status);
+        console.error("Data:", JSON.stringify(err.response.data, null, 2));
+    } else {
+        console.error(err);
     }
 
-};
+    return loading.edit("❌ API Cobalt lỗi.");
+}
