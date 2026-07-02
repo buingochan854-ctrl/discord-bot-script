@@ -74,19 +74,39 @@ module.exports = async function downloadYoutube(message, url) {
             loading.delete().catch(() => {});
 
         } catch (err) {
-            console.error(err);
+            const errorMsg = `❌ Lỗi gửi video: ${err.message || "Không xác định"}`;
+            console.error("Error sending video:", err);
             if (fs.existsSync(output)) fs.unlinkSync(output);
-            loading.edit("❌ Không thể gửi video.");
+            await loading.edit(errorMsg).catch(() => {});
         }
 
     } catch (err) {
         console.error("====== COBALT ERROR ======");
+        console.error(err);
+        
+        let errorMessage = "❌ Có lỗi xảy ra!";
+
         if (err.response) {
             console.error("Status:", err.response.status);
             console.error("Data:", JSON.stringify(err.response.data, null, 2));
-        } else {
-            console.error(err);
+            
+            if (err.response.status === 400) {
+                errorMessage = "❌ URL không hợp lệ hoặc không hỗ trợ.";
+            } else if (err.response.status === 429) {
+                errorMessage = "❌ Quá nhiều yêu cầu, vui lòng đợi.";
+            } else if (err.response.status === 500) {
+                errorMessage = "❌ Lỗi server API.";
+            } else {
+                errorMessage = `❌ API trả về lỗi ${err.response.status}`;
+            }
+        } else if (err.code === 'ECONNABORTED') {
+            errorMessage = "❌ Timeout - Video tải quá lâu.";
+        } else if (err.code === 'ENOTFOUND') {
+            errorMessage = "❌ Không thể kết nối đến API.";
+        } else if (err.message) {
+            errorMessage = `❌ Lỗi: ${err.message}`;
         }
-        return loading.edit("❌ API Cobalt lỗi.");
+
+        await loading.edit(errorMessage).catch(() => {});
     }
 };
