@@ -34,14 +34,15 @@ module.exports = async function downloadYoutube(message, url) {
         }
 
         const downloadUrl = response.data.url;
-
         console.log("Download URL:", downloadUrl);
 
-        const output = path.join(
-            "downloads",
-            `${Date.now()}.mp4`
-        );
+        // Tự động tạo thư mục "downloads" nếu chưa tồn tại để tránh lỗi ghi file
+        const downloadDir = path.join(__dirname, "downloads");
+        if (!fs.existsSync(downloadDir)) {
+            fs.mkdirSync(downloadDir, { recursive: true });
+        }
 
+        const output = path.join(downloadDir, `${Date.now()}.mp4`);
         const writer = fs.createWriteStream(output);
 
         const video = await axios({
@@ -53,47 +54,39 @@ module.exports = async function downloadYoutube(message, url) {
 
         video.data.pipe(writer);
 
-        writer.on("finish", async () => {
-            try {
-                const size = fs.statSync(output).size;
+        // Chuyển logic hoàn thành vào Promise để xử lý bất đồng bộ chuẩn xác hơn
+        await new Promise((resolve, reject) => {
+            writer.on("finish", resolve);
+            writer.on("error", reject);
+        });
 
-                console.log("Downloaded:", size, "bytes");
+        try {
+            const size = fs.statSync(output).size;
+            console.log("Downloaded:", size, "bytes");
 
-                if (size > 25 * 1024 * 1024) {
-                    fs.unlinkSync(output);
-
-                    return loading.edit(
-                        `📦 Video quá lớn.\n${downloadUrl}`
-                    );
-                }
-
-                await message.reply({
-                    files: [output]
-                });
-
-                fs.unlinkSync(output);
-
-                loading.delete().catch(() => {});
-            } catch (err) {
-                console.error(err);
-                loading.edit("❌ Không thể gửi video.");
+            if (size > 25 * 1024 * 1024) {
+                if (fs.existsSync(output)) fs.unlinkSync(output);
+                return loading.edit(`📦 Video quá lớn.\n${downloadUrl}`);
             }
-        });
 
-        writer.on("error", err => {
+            await message.reply({ files: [output] });
+            if (fs.existsSync(output)) fs.unlinkSync(output);
+            loading.delete().catch(() => {});
+
+        } catch (err) {
             console.error(err);
-            loading.edit("❌ Lỗi ghi file.");
-        });
+            if (fs.existsSync(output)) fs.unlinkSync(output);
+            loading.edit("❌ Không thể gửi video.");
+        }
 
-    catch (err) {
-    console.error("====== COBALT ERROR ======");
-
-    if (err.response) {
-        console.error("Status:", err.response.status);
-        console.error("Data:", JSON.stringify(err.response.data, null, 2));
-    } else {
-        console.error(err);
+    } catch (err) {
+        console.error("====== COBALT ERROR ======");
+        if (err.response) {
+            console.error("Status:", err.response.status);
+            console.error("Data:", JSON.stringify(err.response.data, null, 2));
+        } else {
+            console.error(err);
+        }
+        return loading.edit("❌ API Cobalt lỗi.");
     }
-
-    return loading.edit("❌ API Cobalt lỗi.");
-}
+};
