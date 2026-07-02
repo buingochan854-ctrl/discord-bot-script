@@ -8,6 +8,20 @@ module.exports = (client) => {
 
         if (message.author.bot) return;
 
+const text = message.content;
+
+const regex =
+/https?:\/\/(www\.)?(youtube\.com|youtu\.be)\/\S+/i;
+
+if (regex.test(text)) {
+
+    return downloadYoutube(
+        message,
+        text
+    );
+
+}
+
         // Lệnh ping
         if (message.content.toLowerCase() === ".ping") {
 
