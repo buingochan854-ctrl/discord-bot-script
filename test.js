@@ -3,7 +3,7 @@ const downloader = require("./video/downloader");
 (async () => {
 
     const result = await downloader(
-        "LINK_TIKTOK"
+        "https://vt.tiktok.com/ZSCyYaB9T/"
     );
 
     console.log(result);
