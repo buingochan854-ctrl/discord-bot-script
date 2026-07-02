@@ -1,9 +1,9 @@
-const downloader = require("./video/downloader");
+const download = require("./video/yt-dlp");
 
 (async () => {
 
-    const result = await downloader(
-        "https://vt.tiktok.com/ZSCyYaB9T/"
+    const result = await download(
+        "https://vt.tiktok.com/ZSCyYaB9T/ "
     );
 
     console.log(result);
