@@ -8,7 +8,7 @@ RUN apt-get update && \
     apt-get install -y ffmpeg python3 && \
     rm -rf /var/lib/apt/lists/*
 
-RUN npm test
+RUN npm install
 
 COPY . .
 
