@@ -142,16 +142,15 @@ if (data.warns >= config.WEBHOOK.DELETE_LEVEL)
 
     }
 
-    await logger(
+   await logger(
 
-        message,
+    message,
 
-        data.warns,
+    level,
 
-        reason
+    reason
 
-    );
-
+);
     return true;
 
 }
