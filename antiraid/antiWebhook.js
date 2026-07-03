@@ -36,59 +36,113 @@ module.exports = async function (message) {
     data.lastViolation = now;
 
     // ==========================
-    // Kiểm tra spam tốc độ
-    // ==========================
+// Kiểm tra spam tốc độ
+// ==========================
+
+const spamSpeed =
+    data.messages.length >=
+    config.WEBHOOK.MAX_MESSAGES;
+
+// ==========================
+// Kiểm tra spam nội dung
+// ==========================
+
+const contentCount = {};
+
+for (const msg of data.messages) {
+
+    const text = (msg.content || "")
+        .trim()
+        .toLowerCase();
+
+    if (!text.length)
+        continue;
+
+    contentCount[text] =
+        (contentCount[text] || 0) + 1;
+
+}
+
+let duplicate = false;
+let duplicateContent = "";
+
+for (const text in contentCount) {
 
     if (
-
-        data.messages.length >=
-        config.WEBHOOK.MAX_MESSAGES
-
+        contentCount[text] >=
+        config.WEBHOOK.MAX_DUPLICATE
     ) {
 
-        console.log(
-
-            `[Webhook Anti] Spam Detected (${message.webhookId})`
-
-        );
-
-        // Xóa toàn bộ tin nhắn đã ghi nhận
-        for (const msg of data.messages) {
-
-            try {
-
-                const target = await message.channel.messages
-                    .fetch(msg.id)
-                    .catch(() => null);
-
-                if (target)
-                    await target.delete().catch(() => {});
-
-            } catch {}
-
-        }
-
-        // Reset danh sách tin nhắn
-        data.messages = [];
-
-        // Tăng cảnh báo
-        data.warns++;
-
-        data.lastViolation = now;
-
-        await logger(
-
-            message,
-
-            data.warns,
-
-            `Spam (${config.WEBHOOK.MAX_MESSAGES}+ messages/${config.WEBHOOK.INTERVAL / 1000}s)`
-
-        );
-
-        return true;
+        duplicate = true;
+        duplicateContent = text;
+        break;
 
     }
+
+}
+
+// ==========================
+// Có vi phạm
+// ==========================
+
+if (spamSpeed || duplicate) {
+
+    console.log(
+
+        `[Webhook Anti] Violation (${message.webhookId})`
+
+    );
+
+    // Xóa các tin đã lưu
+    for (const msg of data.messages) {
+
+        try {
+
+            const target =
+                await message.channel.messages
+                .fetch(msg.id)
+                .catch(() => null);
+
+            if (target)
+                await target.delete().catch(() => {});
+
+        } catch {}
+
+    }
+
+    data.messages = [];
+
+    data.warns++;
+
+    data.lastViolation = now;
+
+    let reason = "";
+
+    if (spamSpeed) {
+
+        reason =
+            `Spam (${config.WEBHOOK.MAX_MESSAGES}+ messages/${config.WEBHOOK.INTERVAL / 1000}s)`;
+
+    } else {
+
+        reason =
+            `Duplicate (${config.WEBHOOK.MAX_DUPLICATE}+ lần)\n${duplicateContent}`;
+
+    }
+
+    await logger(
+
+        message,
+
+        data.warns,
+
+        reason
+
+    );
+
+    return true;
+
+}
 
     return false;
 
