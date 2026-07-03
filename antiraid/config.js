@@ -47,3 +47,29 @@ module.exports = {
     }
 
 };
+
+// ==============================
+// Webhook Protection
+// ==============================
+
+WEBHOOK: {
+
+    // Spam (tin nhắn)
+
+    MAX_MESSAGES: 8,
+
+    INTERVAL: 5000,
+
+    // Duplicate
+
+    MAX_DUPLICATE: 3,
+
+    // Sau bao lâu reset cảnh cáo
+
+    RESET_WARN: 30 * 60 * 1000,
+
+    // Số lần vi phạm
+
+    DELETE_LEVEL: 3
+
+},
