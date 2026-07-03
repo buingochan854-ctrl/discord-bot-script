@@ -114,7 +114,19 @@ if (spamSpeed || duplicate) {
 
     data.warns++;
 
-    data.lastViolation = now;
+data.lastViolation = now;
+
+// ==========================
+// Xử lý theo cấp độ
+// ==========================
+
+let level = 1;
+
+if (data.warns >= 2)
+    level = 2;
+
+if (data.warns >= config.WEBHOOK.DELETE_LEVEL)
+    level = 3;
 
     let reason = "";
 
