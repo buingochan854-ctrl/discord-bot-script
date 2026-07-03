@@ -72,6 +72,34 @@ const client = new Client({
     ]
 });
 
+// ==============================
+// Webhook AntiRaid Cache Cleaner
+// ==============================
+
+const webhookCache = require("./antiraid/webhookCache");
+const antiRaidConfig = require("./antiraid/config");
+
+setInterval(() => {
+
+    const now = Date.now();
+
+    const cache = webhookCache.values();
+
+    for (const [id, value] of cache) {
+
+        if (
+            now - value.lastViolation >
+            antiRaidConfig.WEBHOOK.RESET_WARN
+        ) {
+
+            cache.delete(id);
+
+        }
+
+    }
+
+}, 60000);
+
 require("./events/messageCreate")(client);
 
 // --- Khai báo Commands ---
