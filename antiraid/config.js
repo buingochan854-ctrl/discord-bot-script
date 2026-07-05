@@ -19,6 +19,18 @@ module.exports = {
     ],
 
     // ==========================
+    // Bypass permissions
+    // ==========================
+
+    BYPASS: [
+
+        PermissionFlagsBits.Administrator,
+        PermissionFlagsBits.ManageGuild,
+        PermissionFlagsBits.ModerateMembers
+
+    ],
+
+    // ==========================
     // Anti Spam Members
     // ==========================
 
