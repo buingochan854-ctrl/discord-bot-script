@@ -2,74 +2,88 @@ const { PermissionFlagsBits } = require("discord.js");
 
 module.exports = {
 
-    // ID kênh log
+    // ==========================
+    // Kênh log Anti Raid
+    // ==========================
+
     LOG_CHANNEL: "ID_KENH_LOG",
 
-    // Quyền được bỏ qua
-    BYPASS: [
-        PermissionFlagsBits.Administrator,
-        PermissionFlagsBits.ManageGuild,
-        PermissionFlagsBits.ManageRoles,
-        PermissionFlagsBits.ManageMessages
+    // ==========================
+    // Những kênh KHÔNG áp dụng Anti
+    // ==========================
+
+    IGNORE_CHANNELS: [
+
+        "1518957150628745287"
+
     ],
 
-    // Anti Spam
+    // ==========================
+    // Anti Spam Members
+    // ==========================
+
     SPAM: {
+
         MAX_MESSAGES: 5,
+
         INTERVAL: 5000,
-        TIMEOUT: 10 // phút
+
+        MUTE_TIME: 10 * 60 * 1000
+
     },
 
-    // Anti Duplicate
+    // ==========================
+    // Anti Duplicate Members
+    // ==========================
+
     DUPLICATE: {
-        MAX_MESSAGES: 3,
+
+        MAX_DUPLICATE: 3,
+
         INTERVAL: 10000
+
     },
 
+    // ==========================
     // Anti Mention
+    // ==========================
+
     MENTION: {
-        MAX: 5
+
+        MAX_EVERYONE: 1,
+
+        MAX_HERE: 1,
+
+        MAX_ROLE: 3,
+
+        MAX_USER: 10
+
     },
 
-    // Anti Emoji
-    EMOJI: {
-        MAX: 25
-    },
+    // ==========================
+    // Anti Webhook
+    // ==========================
 
-    // Anti Caps
-    CAPS: {
-        PERCENT: 80
-    },
+    WEBHOOK: {
 
-    // Anti Repeat
-    REPEAT: {
-        MAX_REPEAT: 12
+        // Spam tốc độ
+
+        MAX_MESSAGES: 8,
+
+        INTERVAL: 5000,
+
+        // Spam nội dung
+
+        MAX_DUPLICATE: 3,
+
+        // Sau bao lâu reset cảnh báo
+
+        RESET_WARN: 30 * 60 * 1000,
+
+        // Lần thứ mấy thì xóa webhook
+
+        DELETE_LEVEL: 3
+
     }
 
 };
-
-// ==============================
-// Webhook Protection
-// ==============================
-
-WEBHOOK: {
-
-    // Spam (tin nhắn)
-
-    MAX_MESSAGES: 8,
-
-    INTERVAL: 5000,
-
-    // Duplicate
-
-    MAX_DUPLICATE: 3,
-
-    // Sau bao lâu reset cảnh cáo
-
-    RESET_WARN: 30 * 60 * 1000,
-
-    // Số lần vi phạm
-
-    DELETE_LEVEL: 3
-
-},
