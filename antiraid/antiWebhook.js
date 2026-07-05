@@ -6,6 +6,14 @@ module.exports = async function (message) {
 
     if (!message.guild) return false;
 
+if (
+
+    config.IGNORE_CHANNELS.includes(
+        message.channel.id
+    )
+
+) return false;
+
     // Không phải webhook
     if (!message.webhookId)
         return false;
