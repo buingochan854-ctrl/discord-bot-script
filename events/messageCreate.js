@@ -1,11 +1,22 @@
 const supabase = require("../database/supabase");
 const { cleanKeyName } = require("../utils/helpers");
-
+const antiWebhook =
+require("../antiraid/antiWebhook");
 module.exports = (client) => {
 
     client.on("messageCreate", async (message) => {
 
         if (message.author.bot) return;
+
+if (message.webhookId) {
+
+    const blocked =
+        await antiWebhook(message);
+
+    if (blocked)
+        return;
+
+}
 
         // Lệnh ping
         if (message.content.toLowerCase() === ".ping") {
