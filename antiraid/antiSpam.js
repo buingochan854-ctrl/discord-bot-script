@@ -7,6 +7,14 @@ module.exports = async function(message){
 
     if(!message.guild) return false;
 
+if (
+
+    config.IGNORE_CHANNELS.includes(
+        message.channel.id
+    )
+
+) return false;
+
     if(hasPermission(message.member))
         return false;
 
