@@ -6,7 +6,7 @@ module.exports = {
     // Kênh log Anti Raid
     // ==========================
 
-    LOG_CHANNEL: "ID_KENH_LOG",
+    LOG_CHANNEL: "1509791922057642049",
 
     // ==========================
     // Những kênh KHÔNG áp dụng Anti
