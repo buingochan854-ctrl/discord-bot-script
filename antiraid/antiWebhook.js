@@ -151,6 +151,70 @@ if (data.warns >= config.WEBHOOK.DELETE_LEVEL)
     reason
 
 );
+
+// ==========================
+// Level 2
+// ==========================
+
+if (level === 2) {
+
+    console.log(
+
+        `[Webhook Anti] Warning Level 2 (${message.webhookId})`
+
+    );
+
+}
+
+// ==========================
+// Level 3
+// ==========================
+
+if (level === 3) {
+
+    try {
+
+        const hooks =
+            await message.channel.fetchWebhooks();
+
+        const hook =
+            hooks.get(message.webhookId);
+
+        if (hook) {
+
+            await hook.delete(
+
+                "Webhook Spam Protection"
+
+            );
+
+            console.log(
+
+                `[Webhook Anti] Webhook Deleted (${message.webhookId})`
+
+            );
+
+        }
+
+    } catch (err) {
+
+        console.error(
+
+            "[Webhook Delete Error]",
+
+            err
+
+        );
+
+    }
+
+    cache.delete(
+
+        message.webhookId
+
+    );
+
+}
     return true;
 
 }
