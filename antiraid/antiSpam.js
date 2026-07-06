@@ -112,7 +112,7 @@ if (
 
             await message.member.timeout(
 
-                config.SPAM.TIMEOUT*
+                config.SPAM.MUTE_TIME*
 
                 60*
 
