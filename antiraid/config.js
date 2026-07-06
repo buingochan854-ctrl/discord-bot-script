@@ -1,5 +1,3 @@
-const { PermissionFlagsBits } = require("discord.js");
-
 module.exports = {
 
     // ==========================
@@ -35,42 +33,30 @@ module.exports = {
     // ==========================
 
     SPAM: {
-
-        MAX_MESSAGES: 5,
-
-        INTERVAL: 5000,
-
-        MUTE_TIME: 10 * 60 * 1000
-
-    },
+    MAX_MESSAGES: 5,
+    INTERVAL: 5000,
+    MUTE_TIME: 10 * 60 * 1000
+},
 
     // ==========================
     // Anti Duplicate Members
     // ==========================
 
     DUPLICATE: {
-
-        MAX_DUPLICATE: 3,
-
-        INTERVAL: 10000
-
-    },
+    MAX_DUPLICATE: 3,
+    INTERVAL: 10000
+},
 
     // ==========================
     // Anti Mention
     // ==========================
 
     MENTION: {
-
-        MAX_EVERYONE: 1,
-
-        MAX_HERE: 1,
-
-        MAX_ROLE: 3,
-
-        MAX_USER: 10
-
-    },
+    MAX_EVERYONE: 1,
+    MAX_HERE: 1,
+    MAX_ROLE: 3,
+    MAX_USER: 10
+},
 
     // ==========================
     // Anti Webhook
