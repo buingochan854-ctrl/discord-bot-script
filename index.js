@@ -1,8 +1,9 @@
 const { exec } = require("child_process");
 
-exec("yt-dlp --version", (err, stdout, stderr) => {
-    console.log("YT-DLP VERSION:", stdout || stderr || err?.message);
-});
+// Comment hoặc xóa nếu không dùng yt-dlp
+// exec("yt-dlp --version", (err, stdout, stderr) => {
+//     console.log("YT-DLP VERSION:", stdout || stderr || err?.message);
+// });
 
 exec("ffmpeg -version", (err, stdout, stderr) => {
     console.log("FFMPEG:", stdout?.split("\n")[0] || stderr || err?.message);
@@ -129,18 +130,40 @@ const commands = [
         .addStringOption(option => option.setName("newvalue").setDescription("Nội dung mới").setRequired(true))
         .addStringOption(option => option.setName("newname").setDescription("Tên mới của key (Nếu muốn đổi tên)").setRequired(false)),
 
-    // === KEYCHANNEL COMMAND (Subcommands) ===
+    // === KEYCHANNEL COMMAND (Subcommands) - ĐÃ SỬA THỨ TỰ ===
     new SlashCommandBuilder()
         .setName("keychannel")
         .setDescription("Quản lý giới hạn key theo kênh")
         .addSubcommand(sub => sub
             .setName("add")
             .setDescription("Thêm rule mới")
-            .addStringOption(option => option.setName("name").setDescription("Tên key").setRequired(true))
-            .addChannelOption(option => option.setName("channel").setDescription("Kênh được phép dùng").setRequired(true))
-            .addStringOption(option => option.setName("end").setDescription("Hậu tố key (VD: VIP)").setRequired(false))
-            .addStringOption(option => option.setName("guild_id").setDescription("Guild ID (để trống sẽ tự lấy)").setRequired(false))
-            .addStringOption(option => option.setName("value").setDescription("Thông báo khi sai kênh").setRequired(true))
+            // REQUIRED options phải đứng trước
+            .addStringOption(option => 
+                option.setName("name")
+                    .setDescription("Tên key")
+                    .setRequired(true)
+            )
+            .addChannelOption(option => 
+                option.setName("channel")
+                    .setDescription("Kênh được phép dùng")
+                    .setRequired(true)
+            )
+            .addStringOption(option => 
+                option.setName("value")
+                    .setDescription("Thông báo khi sai kênh")
+                    .setRequired(true)
+            )
+            // OPTIONAL options đứng sau
+            .addStringOption(option => 
+                option.setName("end")
+                    .setDescription("Hậu tố key (VD: VIP)")
+                    .setRequired(false)
+            )
+            .addStringOption(option => 
+                option.setName("guild_id")
+                    .setDescription("Guild ID (để trống sẽ tự lấy)")
+                    .setRequired(false)
+            )
         )
         .addSubcommand(sub => sub
             .setName("list")
@@ -149,15 +172,35 @@ const commands = [
         .addSubcommand(sub => sub
             .setName("edit")
             .setDescription("Sửa rule")
-            .addStringOption(option => option.setName("name").setDescription("Tên key cần sửa").setRequired(true))
-            .addChannelOption(option => option.setName("channel").setDescription("Kênh mới").setRequired(false))
-            .addStringOption(option => option.setName("end").setDescription("Hậu tố mới").setRequired(false))
-            .addStringOption(option => option.setName("value").setDescription("Thông báo mới").setRequired(false))
+            .addStringOption(option => 
+                option.setName("name")
+                    .setDescription("Tên key cần sửa")
+                    .setRequired(true)
+            )
+            .addChannelOption(option => 
+                option.setName("channel")
+                    .setDescription("Kênh mới")
+                    .setRequired(false)
+            )
+            .addStringOption(option => 
+                option.setName("end")
+                    .setDescription("Hậu tố mới")
+                    .setRequired(false)
+            )
+            .addStringOption(option => 
+                option.setName("value")
+                    .setDescription("Thông báo mới")
+                    .setRequired(false)
+            )
         )
         .addSubcommand(sub => sub
             .setName("delete")
             .setDescription("Xóa rule")
-            .addStringOption(option => option.setName("name").setDescription("Tên key cần xóa").setRequired(true))
+            .addStringOption(option => 
+                option.setName("name")
+                    .setDescription("Tên key cần xóa")
+                    .setRequired(true)
+            )
         )
         .addSubcommand(sub => sub
             .setName("info")
@@ -474,9 +517,9 @@ client.on("interactionCreate", async interaction => {
                 try {
                     const name = cleanKeyName(interaction.options.getString("name"));
                     const channel = interaction.options.getChannel("channel");
+                    const value = interaction.options.getString("value");
                     const end = interaction.options.getString("end") || null;
                     const guildId = interaction.options.getString("guild_id") || interaction.guild.id;
-                    const value = interaction.options.getString("value");
 
                     // Kiểm tra rule đã tồn tại
                     const existingRule = keyChannelCache.findRule(name);
@@ -580,7 +623,7 @@ client.on("interactionCreate", async interaction => {
                     // Cập nhật database
                     const updateData = {};
                     if (channel) updateData.channel_id = channel.id;
-                    if (end !== undefined) updateData.end = end || null;
+                    if (end !== undefined && end !== null) updateData.end = end;
                     if (value) updateData.value = value;
 
                     if (Object.keys(updateData).length === 0) {
@@ -604,7 +647,7 @@ client.on("interactionCreate", async interaction => {
                         .setTitle("✅ Đã cập nhật rule thành công")
                         .addFields(
                             { name: "📌 Key", value: `\`${name}\``, inline: true },
-                            { name: "🔚 End", value: end !== undefined ? `\`${end || "Không có"}\`` : "Không đổi", inline: true },
+                            { name: "🔚 End", value: end !== undefined && end !== null ? `\`${end || "Không có"}\`` : "Không đổi", inline: true },
                             { name: "📺 Channel", value: channel ? `<#${channel.id}>` : "Không đổi", inline: true },
                             { name: "💬 Thông báo", value: value ? `\`${truncateString(value, 50)}\`` : "Không đổi", inline: false }
                         )
@@ -691,7 +734,8 @@ client.on("interactionCreate", async interaction => {
                     .setColor("#5865F2")
                     .setTitle("ℹ️ Thông tin KeyChannel Cache")
                     .addFields(
-                        { name: "📊 Số lượng rules", value: `\`${info.size}\``, inline: true }
+                        { name: "📊 Số lượng rules", value: `\`${info.size}\``, inline: true },
+                        { name: "🔄 Cập nhật lần cuối", value: info.lastUpdate ? `<t:${Math.floor(info.lastUpdate.getTime()/1000)}:R>` : "Chưa có", inline: true }
                     )
                     .setTimestamp();
 
