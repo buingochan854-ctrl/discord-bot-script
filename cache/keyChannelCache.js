@@ -1,9 +1,11 @@
 const supabase = require("../database/supabase");
+const { cleanKeyName } = require("../utils/helpers");
 
 let cache = [];
+let lastUpdate = null;
 
 /**
- * Load rules từ Supabase
+ * Tải dữ liệu từ Supabase vào cache
  */
 async function load() {
     try {
@@ -12,38 +14,48 @@ async function load() {
             .select("*");
 
         if (error) {
-            console.error("[KeyChannel Cache]", error);
+            console.error("[KeyChannel Cache] Load Error:", error);
             return false;
         }
 
-        cache = (data || []).sort((a, b) => {
-            if (b.name.length !== a.name.length) {
+        // Sắp xếp theo độ dài name giảm dần để ưu tiên rule dài nhất
+        cache = data.sort((a, b) => {
+            // Ưu tiên rule có name dài hơn
+            if (a.name.length !== b.name.length) {
                 return b.name.length - a.name.length;
             }
-
+            // Nếu cùng độ dài, ưu tiên rule có end (không null)
             if (a.end && !b.end) return -1;
             if (!a.end && b.end) return 1;
-
             return 0;
         });
 
-        console.log(
-            `[KeyChannel] Loaded ${cache.length} rules`
-        );
-
+        lastUpdate = new Date();
+        console.log(`[KeyChannel] ✅ Loaded ${cache.length} rules`);
+        
+        // Debug: In ra cache để kiểm tra
+        if (cache.length > 0) {
+            console.log(`[KeyChannel] First rule:`, {
+                name: cache[0].name,
+                end: cache[0].end,
+                guild_id: cache[0].guild_id,
+                channel_id: cache[0].channel_id
+            });
+        }
+        
         return true;
-
     } catch (err) {
-        console.error("[KeyChannel Cache]", err);
+        console.error("[KeyChannel Cache] Fatal Error:", err);
         return false;
     }
 }
 
 /**
- * Reload cache
+ * Reload cache (alias của load)
  */
 async function reload() {
-    return await load();
+    console.log("[KeyChannel] Reloading cache...");
+    return load();
 }
 
 /**
@@ -54,146 +66,102 @@ function get() {
 }
 
 /**
- * Tìm rule phù hợp nhất
+ * Tìm rule phù hợp nhất cho key
+ * @param {string} keyName - Tên key cần kiểm tra
+ * @returns {object|null} - Rule tìm thấy hoặc null
  */
 function findRule(keyName) {
+    if (!cache || cache.length === 0) return null;
 
-    if (!keyName) return null;
-
+    // Chuẩn hóa key name
+    const key = cleanKeyName(keyName);
+    
     for (const rule of cache) {
+        // Chuẩn hóa rule name
+        const ruleName = cleanKeyName(rule.name);
+        
+        // Key phải bắt đầu bằng rule.name (đã clean)
+        if (!key.startsWith(ruleName)) continue;
 
-        if (!keyName.startsWith(rule.name))
-            continue;
-
+        // Nếu rule có end, key phải kết thúc bằng end (đã clean)
         if (rule.end) {
-
-            if (!keyName.endsWith(rule.end))
-                continue;
-
-        } else {
-
-            if (keyName !== rule.name)
-                continue;
-
+            const ruleEnd = cleanKeyName(rule.end);
+            if (!key.endsWith(ruleEnd)) continue;
         }
 
+        // Tìm thấy rule phù hợp
         return rule;
-
     }
 
     return null;
 }
 
 /**
- * Kiểm tra quyền sử dụng key
+ * Kiểm tra permission cho key trong channel/guild cụ thể
+ * @param {string} keyName - Tên key cần kiểm tra
+ * @param {string} channelId - ID của kênh
+ * @param {string} guildId - ID của server
+ * @returns {object} - { allowed: boolean, message?: string }
  */
-function checkPermission(
-    keyName,
-    channelId,
-    guildId
-) {
-
+function checkPermission(keyName, channelId, guildId) {
     const rule = findRule(keyName);
 
-    // Không có rule -> cho phép
+    // Không có rule → cho phép sử dụng
     if (!rule) {
-
-        return {
-            allowed: true
-        };
-
+        return { allowed: true };
     }
 
-    // Sai Guild
-    if (
-        rule.guild_id &&
-        guildId !== rule.guild_id
-    ) {
-
+    // Kiểm tra Guild
+    if (rule.guild_id && guildId !== rule.guild_id) {
         return {
-
             allowed: false,
-
-            message:
-                rule.value ||
-                "❌ Key này không được phép sử dụng tại server này."
-
+            message: rule.value || `❌ Key \`${keyName}\` không được phép sử dụng trong server này.`
         };
-
     }
 
-    // Sai Channel
-    if (
-        rule.channel_id &&
-        channelId !== rule.channel_id
-    ) {
-
+    // Kiểm tra Channel
+    if (channelId !== rule.channel_id) {
         return {
-
             allowed: false,
-
-            message:
-                rule.value ||
-                "❌ Key này chỉ được phép sử dụng tại kênh quy định."
-
+            message: rule.value || `❌ Key \`${keyName}\` không được phép sử dụng trong kênh này.`
         };
-
     }
 
-    return {
-        allowed: true
-    };
-
+    // Cho phép
+    return { allowed: true };
 }
 
 /**
- * Thông tin cache
+ * Lấy thông tin cache (debug)
  */
 function getInfo() {
-
     return {
-
         size: cache.length,
-
-        rules: cache.map(rule => ({
-
-            name: rule.name,
-
-            end: rule.end,
-
-            guild_id: rule.guild_id,
-
-            channel_id: rule.channel_id
-
+        lastUpdate: lastUpdate,
+        rules: cache.map(r => ({
+            name: r.name,
+            end: r.end,
+            guild_id: r.guild_id,
+            channel_id: r.channel_id
         }))
-
     };
-
 }
 
 /**
- * Xóa cache
+ * Xóa cache (cho test/debug)
  */
 function clear() {
-
     cache = [];
-
+    lastUpdate = null;
+    console.log("[KeyChannel Cache] Cache cleared");
 }
 
 module.exports = {
-
     load,
-
     reload,
-
     get,
-
     findRule,
-
     checkPermission,
-
     getInfo,
-
     clear
-
 };
