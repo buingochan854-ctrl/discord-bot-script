@@ -21,6 +21,7 @@ const {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
+    StringSelectMenuBuilder,
     ActivityType,
 } = require("discord.js");
 const { joinVoiceChannel } = require("@discordjs/voice");
@@ -42,11 +43,17 @@ const { updateBotStatus } = require("./utils/status");
 // Import KeyChannel Cache
 const keyChannelCache = require("./cache/keyChannelCache");
 
+// ==========================================
+//   OWNER ID
+// ==========================================
+const OWNER_ID = "1455796719378895022";
+
 console.log("================================");
 console.log("Discord.js Version:", version);
 console.log("Node Version:", process.version);
 console.log("TOKEN EXISTS:", !!process.env.TOKEN);
 console.log("TOKEN LENGTH:", process.env.TOKEN?.length);
+console.log("OWNER ID:", OWNER_ID);
 console.log("================================");
 
 // --- Constants Voice 24/7 ---
@@ -130,11 +137,15 @@ const commands = [
         .addStringOption(option => option.setName("newvalue").setDescription("Nội dung mới").setRequired(true))
         .addStringOption(option => option.setName("newname").setDescription("Tên mới của key (Nếu muốn đổi tên)").setRequired(false)),
 
+    // === SETSTATUS COMMAND ===
+    new SlashCommandBuilder()
+        .setName("setstatus")
+        .setDescription("Đổi trạng thái Bot"),
+
     // === KEYCHANNEL COMMAND (Subcommands) ===
     new SlashCommandBuilder()
         .setName("keychannel")
         .setDescription("Quản lý giới hạn key theo kênh")
-        // ADD - Thêm rule normal
         .addSubcommand(sub => sub
             .setName("add")
             .setDescription("Thêm rule mới")
@@ -164,7 +175,6 @@ const commands = [
                     .setRequired(false)
             )
         )
-        // END - Thêm rule suffix
         .addSubcommand(sub =>
             sub
                 .setName("end")
@@ -190,12 +200,10 @@ const commands = [
                      .setRequired(false)
                 )
         )
-        // LIST - Xem danh sách rules
         .addSubcommand(sub => sub
             .setName("list")
             .setDescription("Xem danh sách rules")
         )
-        // EDIT - Sửa rule
         .addSubcommand(sub => sub
             .setName("edit")
             .setDescription("Sửa rule")
@@ -220,7 +228,6 @@ const commands = [
                     .setRequired(false)
             )
         )
-        // DELETE - Xóa rule normal
         .addSubcommand(sub => sub
             .setName("delete")
             .setDescription("Xóa rule")
@@ -230,7 +237,6 @@ const commands = [
                     .setRequired(true)
             )
         )
-        // REMOVE - Xóa rule (normal hoặc suffix)
         .addSubcommand(sub =>
             sub
                 .setName("remove")
@@ -246,7 +252,6 @@ const commands = [
                      .setRequired(false)
                 )
         )
-        // INFO - Xem thông tin cache
         .addSubcommand(sub => sub
             .setName("info")
             .setDescription("Xem thông tin cache")
@@ -375,6 +380,46 @@ client.on("interactionCreate", async interaction => {
             else if (cmdName === "listkey") actionText = "Xem";
 
             return interaction.editReply(`<:failed:1518595211205283992> Bạn Không Có Quyền ${actionText} Key! (Blacklist)`);
+        }
+
+        // =========================================
+        // COMMAND: SETSTATUS
+        // =========================================
+        if (interaction.commandName === "setstatus") {
+            // Kiểm tra Owner
+            if (interaction.user.id !== OWNER_ID) {
+                return interaction.editReply("❌ Chỉ Owner Bot mới được dùng lệnh này.");
+            }
+
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new StringSelectMenuBuilder()
+                        .setCustomId("bot_status")
+                        .setPlaceholder("Chọn trạng thái Bot")
+                        .addOptions(
+                            {
+                                label: "🟢 Trực Tuyến",
+                                value: "online"
+                            },
+                            {
+                                label: "⛔ Vui Lòng Không Làm Phiền",
+                                value: "dnd"
+                            },
+                            {
+                                label: "🌙 Chờ",
+                                value: "idle"
+                            },
+                            {
+                                label: "⚫ Vô Hình",
+                                value: "invisible"
+                            }
+                        )
+                );
+
+            return interaction.editReply({
+                content: "## ⚙️ Menu đổi trạng thái Bot",
+                components: [row]
+            });
         }
 
         // --- COMMAND: ADDKEY ---
@@ -861,8 +906,7 @@ client.on("interactionCreate", async interaction => {
 
             // =========================================
             // KEYCHANNEL DELETE
-            // =========================================
-            if (subcommand === "delete") {
+            // =========================================            if (subcommand === "delete") {
                 if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                     return interaction.editReply("❌ Bạn không có quyền sử dụng lệnh này.");
                 }
@@ -1032,6 +1076,66 @@ client.on("interactionCreate", async interaction => {
         if (interaction.deferred) {
             interaction.editReply("<:failed:1518595211205283992> Đã xảy ra lỗi không mong muốn trong hệ thống.");
         }
+    }
+});
+
+// ==========================================
+//   XỬ LÝ STRING SELECT MENU (Status)
+// ==========================================
+client.on("interactionCreate", async interaction => {
+    // Chỉ xử lý StringSelectMenu
+    if (!interaction.isStringSelectMenu()) return;
+
+    // Chỉ xử lý menu bot_status
+    if (interaction.customId !== "bot_status") return;
+
+    // Kiểm tra Owner
+    if (interaction.user.id !== OWNER_ID) {
+        return interaction.reply({
+            content: "❌ Chỉ Owner Bot mới dùng được.",
+            ephemeral: true
+        });
+    }
+
+    try {
+        const value = interaction.values[0];
+
+        // Đổi trạng thái bot
+        await client.user.setStatus(value);
+
+        // Map value sang text hiển thị
+        let text = "";
+        switch (value) {
+            case "online":
+                text = "🟢 Trực Tuyến";
+                break;
+            case "idle":
+                text = "🌙 Chờ";
+                break;
+            case "dnd":
+                text = "⛔ Vui Lòng Không Làm Phiền";
+                break;
+            case "invisible":
+                text = "⚫ Vô Hình";
+                break;
+            default:
+                text = value;
+        }
+
+        // Cập nhật message
+        await interaction.update({
+            content: `✅ Đã đổi trạng thái thành **${text}**.`,
+            components: []
+        });
+
+        console.log(`[STATUS] Changed to ${value} by ${interaction.user.tag}`);
+
+    } catch (err) {
+        console.error("[STATUS ERROR]", err);
+        await interaction.reply({
+            content: "❌ Đã xảy ra lỗi khi đổi trạng thái.",
+            ephemeral: true
+        });
     }
 });
 
