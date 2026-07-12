@@ -22,6 +22,9 @@ RUN npm install
 # Copy toàn bộ source
 COPY . .
 
+# ✅ Kiểm tra cú pháp
+RUN node --check index.js
+
 # Tạo thư mục cần thiết
 RUN mkdir -p downloads
 
