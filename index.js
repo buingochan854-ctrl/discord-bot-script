@@ -130,14 +130,14 @@ const commands = [
         .addStringOption(option => option.setName("newvalue").setDescription("Nội dung mới").setRequired(true))
         .addStringOption(option => option.setName("newname").setDescription("Tên mới của key (Nếu muốn đổi tên)").setRequired(false)),
 
-    // === KEYCHANNEL COMMAND (Subcommands) - ĐÃ SỬA THỨ TỰ ===
+    // === KEYCHANNEL COMMAND (Subcommands) ===
     new SlashCommandBuilder()
         .setName("keychannel")
         .setDescription("Quản lý giới hạn key theo kênh")
+        // ADD - Thêm rule normal
         .addSubcommand(sub => sub
             .setName("add")
             .setDescription("Thêm rule mới")
-            // REQUIRED options phải đứng trước
             .addStringOption(option => 
                 option.setName("name")
                     .setDescription("Tên key")
@@ -153,7 +153,6 @@ const commands = [
                     .setDescription("Thông báo khi sai kênh")
                     .setRequired(true)
             )
-            // OPTIONAL options đứng sau
             .addStringOption(option => 
                 option.setName("end")
                     .setDescription("Hậu tố key (VD: VIP)")
@@ -165,10 +164,38 @@ const commands = [
                     .setRequired(false)
             )
         )
+        // END - Thêm rule suffix
+        .addSubcommand(sub =>
+            sub
+                .setName("end")
+                .setDescription("Tạo rule theo hậu tố")
+                .addStringOption(o =>
+                    o.setName("textend")
+                     .setDescription("Hậu tố (VD: Hub)")
+                     .setRequired(true)
+                )
+                .addChannelOption(o =>
+                    o.setName("channel")
+                     .setDescription("Kênh được phép dùng")
+                     .setRequired(true)
+                )
+                .addStringOption(o =>
+                    o.setName("value")
+                     .setDescription("Thông báo khi sai kênh")
+                     .setRequired(true)
+                )
+                .addStringOption(o =>
+                    o.setName("guild_id")
+                     .setDescription("Guild ID (để trống sẽ tự lấy)")
+                     .setRequired(false)
+                )
+        )
+        // LIST - Xem danh sách rules
         .addSubcommand(sub => sub
             .setName("list")
             .setDescription("Xem danh sách rules")
         )
+        // EDIT - Sửa rule
         .addSubcommand(sub => sub
             .setName("edit")
             .setDescription("Sửa rule")
@@ -193,6 +220,7 @@ const commands = [
                     .setRequired(false)
             )
         )
+        // DELETE - Xóa rule normal
         .addSubcommand(sub => sub
             .setName("delete")
             .setDescription("Xóa rule")
@@ -202,6 +230,23 @@ const commands = [
                     .setRequired(true)
             )
         )
+        // REMOVE - Xóa rule (normal hoặc suffix)
+        .addSubcommand(sub =>
+            sub
+                .setName("remove")
+                .setDescription("Xóa Rule (normal hoặc suffix)")
+                .addStringOption(o =>
+                    o.setName("name")
+                     .setDescription("Tên key (cho rule normal)")
+                     .setRequired(false)
+                )
+                .addStringOption(o =>
+                    o.setName("textend")
+                     .setDescription("Hậu tố (cho rule suffix)")
+                     .setRequired(false)
+                )
+        )
+        // INFO - Xem thông tin cache
         .addSubcommand(sub => sub
             .setName("info")
             .setDescription("Xem thông tin cache")
@@ -584,6 +629,7 @@ client.on("interactionCreate", async interaction => {
                     const { error: insertError } = await supabase
                         .from("key_channels")
                         .insert({
+                            mode: "normal",
                             name: name,
                             end: end,
                             guild_id: guildId,
@@ -595,7 +641,7 @@ client.on("interactionCreate", async interaction => {
                         return interaction.editReply(`❌ ${insertError.message}`);
                     }
 
-                    // ✅ RELOAD CACHE SAU KHI THÊM
+                    // Reload cache
                     await keyChannelCache.reload();
                     
                     console.log("[DEBUG] Cache after add:", keyChannelCache.get().length, "rules");
@@ -629,6 +675,79 @@ client.on("interactionCreate", async interaction => {
             }
 
             // =========================================
+            // KEYCHANNEL END - Tạo rule suffix
+            // =========================================
+            if (subcommand === "end") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return interaction.editReply("❌ Bạn không có quyền sử dụng lệnh này.");
+                }
+
+                try {
+                    const textend = interaction.options.getString("textend").toLowerCase();
+                    const channel = interaction.options.getChannel("channel");
+                    const guildId = interaction.options.getString("guild_id") || interaction.guild.id;
+                    const value = interaction.options.getString("value");
+
+                    // Kiểm tra rule suffix đã tồn tại
+                    const existingRules = keyChannelCache.get();
+                    const existingSuffix = existingRules.find(r => 
+                        r.mode === "suffix" && r.end.toLowerCase() === textend
+                    );
+
+                    if (existingSuffix) {
+                        return interaction.editReply(
+                            `❌ Rule hậu tố \`${textend}\` đã tồn tại.\n` +
+                            `📺 Channel: <#${existingSuffix.channel_id}>`
+                        );
+                    }
+
+                    // Lưu vào database
+                    const { error: insertError } = await supabase
+                        .from("key_channels")
+                        .insert({
+                            mode: "suffix",
+                            name: null,
+                            end: textend,
+                            guild_id: guildId,
+                            channel_id: channel.id,
+                            value: value
+                        });
+
+                    if (insertError) {
+                        return interaction.editReply(`❌ ${insertError.message}`);
+                    }
+
+                    // Reload cache
+                    await keyChannelCache.reload();
+
+                    const embed = new EmbedBuilder()
+                        .setColor("#00FF00")
+                        .setTitle("✅ Đã tạo Rule hậu tố thành công")
+                        .addFields(
+                            { name: "🔚 Hậu tố", value: `\`${textend}\``, inline: true },
+                            { name: "🏠 Guild", value: `\`${guildId}\``, inline: true },
+                            { name: "📺 Channel", value: `<#${channel.id}>`, inline: true },
+                            { name: "💬 Thông báo", value: `\`${truncateString(value, 50)}\``, inline: false }
+                        )
+                        .setTimestamp();
+
+                    await interaction.editReply({ embeds: [embed] });
+
+                    await sendKeyLog({
+                        action: "Add Suffix Rule",
+                        user: interaction.user,
+                        guildName: interaction.guild?.name || "Tin nhắn riêng",
+                        key: `*${textend}`,
+                        newValue: `Kênh: ${channel.name} | Guild: ${guildId}`
+                    });
+
+                } catch (err) {
+                    console.error("KeyChannel End Error:", err);
+                    return interaction.editReply("❌ Đã xảy ra lỗi khi tạo rule hậu tố.");
+                }
+            }
+
+            // =========================================
             // KEYCHANNEL LIST
             // =========================================
             if (subcommand === "list") {
@@ -638,14 +757,34 @@ client.on("interactionCreate", async interaction => {
                     return interaction.editReply("📭 Không có rule nào trong hệ thống.");
                 }
 
+                // Phân loại rules
+                const normalRules = rules.filter(r => r.mode === "normal" || !r.mode);
+                const suffixRules = rules.filter(r => r.mode === "suffix");
+
+                let description = "";
+
+                if (normalRules.length > 0) {
+                    description += "**📌 Rule Normal:**\n";
+                    description += normalRules.map((r, i) => 
+                        `${i + 1}. **${r.name}** ${r.end ? `\`[${r.end}]\`` : ''}\n` +
+                        `   📺 <#${r.channel_id}> | 🏠 \`${r.guild_id}\``
+                    ).join("\n");
+                }
+
+                if (suffixRules.length > 0) {
+                    if (description) description += "\n\n";
+                    description += "**🔚 Rule Hậu tố:**\n";
+                    description += suffixRules.map((r, i) => 
+                        `${i + 1}. **${r.end}**\n` +
+                        `   📺 <#${r.channel_id}> | 🏠 \`${r.guild_id}\``
+                    ).join("\n");
+                }
+
                 const embed = new EmbedBuilder()
                     .setColor("#5865F2")
                     .setTitle("📋 Danh sách KeyChannel Rules")
-                    .setDescription(rules.map((r, i) => 
-                        `${i + 1}. **${r.name}** ${r.end ? `\`[${r.end}]\`` : ''}\n` +
-                        `   📺 <#${r.channel_id}> | 🏠 \`${r.guild_id}\``
-                    ).join("\n\n"))
-                    .setFooter({ text: `Tổng: ${rules.length} rules` })
+                    .setDescription(description || "Không có rule nào")
+                    .setFooter({ text: `Tổng: ${rules.length} rules (${normalRules.length} normal, ${suffixRules.length} suffix)` })
                     .setTimestamp();
 
                 return interaction.editReply({ embeds: [embed] });
@@ -755,77 +894,4 @@ client.on("interactionCreate", async interaction => {
                         .setTitle("🗑️ Đã xóa rule thành công")
                         .addFields(
                             { name: "📌 Key", value: `\`${name}\``, inline: true },
-                            { name: "🔚 End", value: existingRule.end ? `\`${existingRule.end}\`` : "Không có", inline: true }
-                        )
-                        .setTimestamp();
-
-                    await interaction.editReply({ embeds: [embed] });
-
-                    await sendKeyLog({
-                        action: "Delete KeyChannel Rule",
-                        user: interaction.user,
-                        guildName: interaction.guild?.name || "Tin nhắn riêng",
-                        key: name,
-                        oldValue: `Đã xóa rule`
-                    });
-
-                } catch (err) {
-                    console.error("KeyChannel Delete Error:", err);
-                    return interaction.editReply("❌ Đã xảy ra lỗi khi xóa rule.");
-                }
-            }
-
-            // =========================================
-            // KEYCHANNEL INFO (Debug)
-            // =========================================
-            if (subcommand === "info") {
-                const info = keyChannelCache.getInfo();
-                
-                const embed = new EmbedBuilder()
-                    .setColor("#5865F2")
-                    .setTitle("ℹ️ Thông tin KeyChannel Cache")
-                    .addFields(
-                        { name: "📊 Số lượng rules", value: `\`${info.size}\``, inline: true },
-                        { name: "🔄 Cập nhật lần cuối", value: info.lastUpdate ? `<t:${Math.floor(info.lastUpdate.getTime()/1000)}:R>` : "Chưa có", inline: true }
-                    )
-                    .setTimestamp();
-
-                return interaction.editReply({ embeds: [embed] });
-            }
-        }
-
-    } catch (err) {
-        console.error(err);
-        if (interaction.deferred) {
-            interaction.editReply("<:failed:1518595211205283992> Đã xảy ra lỗi không mong muốn trong hệ thống.");
-        }
-    }
-});
-
-// Login & Timeout check
-let loggedIn = false;
-
-(async () => {
-    try {
-        console.log("Starting Discord Login...");
-        await client.login(process.env.TOKEN);
-        loggedIn = true;
-        console.log("LOGIN SUCCESS");
-    } catch (err) {
-        console.error("LOGIN FAILED:", err);
-    }
-})();
-
-setTimeout(() => {
-    if (!loggedIn) console.log("LOGIN TIMEOUT 30 SECONDS - Token lỗi hoặc mạng có vấn đề!");
-}, 30000);
-
-http.createServer((req, res) => {
-    res.writeHead(200, { "Content-Type": "text/plain" });
-    res.end("Bot Test Online");
-}).listen(process.env.PORT || 3000, () => {
-    console.log(`Web Server Running On Port ${process.env.PORT || 3000}`);
-});
-
-process.on("unhandledRejection", console.error);
-process.on("uncaughtException", console.error);
+                            { name: "🔚
