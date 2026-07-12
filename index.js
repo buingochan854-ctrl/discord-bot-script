@@ -256,7 +256,7 @@ const BLACKLIST = [
 const KEY_COMMAND_KEYWORDS = ["key"];
 
 // ==========================================
-//   HÀM KIỂM TRA KEY THEO KÊNH
+//   HÀM KIỂM TRA KEY THEO KÊNH (CHO P3)
 // ==========================================
 async function checkKeyChannelPermission(keyName, channelId, guildId) {
     try {
@@ -284,8 +284,13 @@ async function checkKeyChannelPermission(keyName, channelId, guildId) {
 
         // Kiểm tra hậu tố nếu có
         if (data.end) {
-            // Ví dụ: key phải có hậu tố "end" thì mới được dùng
-            // Bạn có thể custom logic ở đây
+            // Nếu key có end, kiểm tra key phải kết thúc bằng end
+            if (!keyName.endsWith(data.end)) {
+                return {
+                    allowed: false,
+                    message: `Key \`${keyName}\` không hợp lệ. Key phải có hậu tố \`${data.end}\``
+                };
+            }
         }
 
         return { allowed: true };
@@ -492,113 +497,70 @@ client.on("interactionCreate", async interaction => {
             return interaction.editReply(`<:success:1518594913179013141> Đã chỉnh sửa thành công key: \`${name}\``);
         }
 
-        // --- COMMAND: KEYCHANNEL ---
+        // --- COMMAND: KEYCHANNEL (P2 - Hoàn chỉnh) ---
         if (interaction.commandName === "keychannel") {
-            // Kiểm tra quyền Admin
+            // Bước 2.2: Kiểm tra quyền Administrator
             if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-                return interaction.editReply("<:failed:1518595211205283992> Bạn không có quyền quản trị viên.");
+                return interaction.editReply("❌ Bạn không có quyền sử dụng lệnh này.");
             }
 
             try {
+                // Bước 2.1: Lấy dữ liệu từ Slash Command
                 const name = cleanKeyName(interaction.options.getString("name"));
                 const channel = interaction.options.getChannel("channel");
-                const end = interaction.options.getString("end") || null;
-                let guild_id = interaction.options.getString("guild_id");
+                const end = interaction.options.getString("end");
+                const guildId = interaction.options.getString("guild_id") || interaction.guild.id;
                 const value = interaction.options.getString("value");
 
-                // Nếu không nhập guild_id, tự lấy guild hiện tại
-                if (!guild_id) {
-                    guild_id = interaction.guildId;
-                }
-
-                // Kiểm tra xem key đã tồn tại trong bảng keys chưa
-                const { data: keyExists, error: checkError } = await supabase
-                    .from("keys")
-                    .select("name")
-                    .eq("name", name)
-                    .single();
-
-                if (checkError && checkError.code !== "PGRST116") { // PGRST116 = not found
-                    return interaction.editReply(`<:failed:1518595211205283992> Lỗi kiểm tra key: ${checkError.message}`);
-                }
-
-                if (!keyExists) {
-                    return interaction.editReply(`<:failed:1518595211205283992> Key \`${name}\` không tồn tại trong hệ thống. Vui lòng tạo key trước bằng \`/addkey\``);
-                }
-
-                // Kiểm tra xem đã có rule cho key này chưa
-                const { data: existingRule, error: ruleCheckError } = await supabase
+                // Bước 2.3: Kiểm tra rule đã tồn tại chưa
+                const { data: allRules, error: fetchError } = await supabase
                     .from("key_channels")
-                    .select("*")
-                    .eq("name", name)
-                    .single();
+                    .select("*");
 
-                if (ruleCheckError && ruleCheckError.code !== "PGRST116") {
-                    return interaction.editReply(`<:failed:1518595211205283992> Lỗi kiểm tra rule: ${ruleCheckError.message}`);
+                if (fetchError) {
+                    return interaction.editReply(`❌ Lỗi kiểm tra rule: ${fetchError.message}`);
                 }
 
-                // Nếu đã tồn tại, cập nhật rule cũ
-                if (existingRule) {
-                    const { error: updateError } = await supabase
-                        .from("key_channels")
-                        .update({
-                            channel_id: channel.id,
-                            end: end,
-                            guild_id: guild_id,
-                            value: value
-                        })
-                        .eq("name", name);
+                // Kiểm tra rule trùng
+                const exists = allRules.find(x => 
+                    cleanKeyName(x.name) === name && 
+                    (x.end || "") === (end || "")
+                );
 
-                    if (updateError) {
-                        return interaction.editReply(`<:failed:1518595211205283992> Lỗi cập nhật: ${updateError.message}`);
-                    }
-
-                    const embed = new EmbedBuilder()
-                        .setColor("#00FF00")
-                        .setTitle("✅ Cập nhật rule thành công")
-                        .addFields(
-                            { name: "Key", value: `\`${name}\``, inline: true },
-                            { name: "Kênh", value: `<#${channel.id}>`, inline: true },
-                            { name: "Guild ID", value: `\`${guild_id}\``, inline: true },
-                            { name: "Hậu tố", value: end ? `\`${end}\`` : "Không có", inline: true },
-                            { name: "Thông báo sai", value: `\`${truncateString(value, 50)}\``, inline: false }
-                        )
-                        .setTimestamp();
-
-                    return interaction.editReply({ embeds: [embed] });
+                if (exists) {
+                    return interaction.editReply(
+                        "❌ Rule này đã tồn tại.\n" +
+                        `📌 Key: \`${name}\`\n` +
+                        `🔚 End: \`${end || "Không có"}\``
+                    );
                 }
 
-                // Nếu chưa tồn tại, tạo mới
-                const { data: newRule, error: insertError } = await supabase
+                // Bước 2.4: Lưu vào Supabase
+                const { error: insertError } = await supabase
                     .from("key_channels")
                     .insert({
                         name: name,
-                        end: end,
-                        guild_id: guild_id,
+                        end: end || null,
+                        guild_id: guildId,
                         channel_id: channel.id,
                         value: value
-                    })
-                    .select()
-                    .single();
+                    });
 
+                // Bước 2.5: Xử lý lỗi
                 if (insertError) {
-                    return interaction.editReply(`<:failed:1518595211205283992> Lỗi tạo rule: ${insertError.message}`);
+                    return interaction.editReply(`❌ ${insertError.message}`);
                 }
 
-                const embed = new EmbedBuilder()
-                    .setColor("#5865F2")
-                    .setTitle("✅ Đã thêm rule key theo kênh")
-                    .addFields(
-                        { name: "Key", value: `\`${name}\``, inline: true },
-                        { name: "Kênh", value: `<#${channel.id}>`, inline: true },
-                        { name: "Guild ID", value: `\`${guild_id}\``, inline: true },
-                        { name: "Hậu tố", value: end ? `\`${end}\`` : "Không có", inline: true },
-                        { name: "Thông báo sai", value: `\`${truncateString(value, 50)}\``, inline: false }
-                    )
-                    .setFooter({ text: `Rule ID: ${newRule.id}` })
-                    .setTimestamp();
+                // Bước 2.6: Thành công
+                const successMessage = 
+                    `✅ Đã tạo rule thành công.\n\n` +
+                    `📌 **Key:** \`${name}\`\n` +
+                    `🏠 **Guild:** \`${guildId}\`\n` +
+                    `📺 **Channel:** <#${channel.id}>\n` +
+                    `🔚 **End:** ${end ? `\`${end}\`` : "Không có"}\n` +
+                    `💬 **Value:**\n${value}`;
 
-                await interaction.editReply({ embeds: [embed] });
+                await interaction.editReply(successMessage);
 
                 // Log hành động
                 await sendKeyLog({
@@ -606,12 +568,12 @@ client.on("interactionCreate", async interaction => {
                     user: interaction.user,
                     guildName: interaction.guild?.name || "Tin nhắn riêng",
                     key: name,
-                    newValue: `Kênh: ${channel.name} | Guild: ${guild_id} | Thông báo: ${value}`
+                    newValue: `Kênh: ${channel.name} | Guild: ${guildId} | Thông báo: ${value} | End: ${end || "Không"}`
                 });
 
             } catch (err) {
                 console.error("KeyChannel Error:", err);
-                return interaction.editReply("<:failed:1518595211205283992> Đã xảy ra lỗi khi tạo rule.");
+                return interaction.editReply("❌ Đã xảy ra lỗi khi tạo rule.");
             }
         }
 
