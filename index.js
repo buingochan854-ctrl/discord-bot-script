@@ -219,6 +219,12 @@ client.once("clientReady", async () => {
 
     // --- LOAD KEYCHANNEL CACHE ---
     await keyChannelCache.load();
+    
+    // DEBUG: In cache để kiểm tra
+    console.log("[DEBUG] Cache loaded:", keyChannelCache.get().length, "rules");
+    if (keyChannelCache.get().length > 0) {
+        console.log("[DEBUG] First rule:", keyChannelCache.get()[0]);
+    }
 
     // --- CẤU HÌNH TREO KÊNH THOẠI 24/7 ---
     try {
@@ -445,6 +451,19 @@ client.on("interactionCreate", async interaction => {
 
             if (error) return interaction.editReply(`<:failed:1518595211205283992> Lỗi khi xóa: ${error.message}`);
 
+            // Xóa cả rule trong key_channels nếu có
+            const { error: deleteRuleError } = await supabase
+                .from("key_channels")
+                .delete()
+                .eq("name", target.name);
+
+            if (deleteRuleError) {
+                console.error("Delete rule error:", deleteRuleError);
+            } else {
+                // Reload cache nếu xóa rule thành công
+                await keyChannelCache.reload();
+            }
+
             await sendKeyLog({
                 action: "Delete Key",
                 user: interaction.user,
@@ -478,7 +497,22 @@ client.on("interactionCreate", async interaction => {
             const oldName = target.name;
 
             const updateData = { value: newValue };
-            if (newName) updateData.name = cleanKeyName(newName);
+            if (newName) {
+                const cleanedNewName = cleanKeyName(newName);
+                updateData.name = cleanedNewName;
+                
+                // Cập nhật cả rule trong key_channels nếu có
+                const { error: updateRuleError } = await supabase
+                    .from("key_channels")
+                    .update({ name: cleanedNewName })
+                    .eq("name", target.name);
+                    
+                if (updateRuleError) {
+                    console.error("Update rule error:", updateRuleError);
+                } else {
+                    await keyChannelCache.reload();
+                }
+            }
 
             const { error } = await supabase.from("keys").update(updateData).eq("name", target.name);
             if (error) return interaction.editReply(`<:failed:1518595211205283992> Lỗi khi cập nhật: ${error.message}`);
@@ -521,6 +555,21 @@ client.on("interactionCreate", async interaction => {
                     const end = interaction.options.getString("end") || null;
                     const guildId = interaction.options.getString("guild_id") || interaction.guild.id;
 
+                    // Kiểm tra key tồn tại trong bảng keys
+                    const { data: keyExists, error: keyCheckError } = await supabase
+                        .from("keys")
+                        .select("name")
+                        .eq("name", name)
+                        .maybeSingle();
+
+                    if (keyCheckError) {
+                        return interaction.editReply(`❌ Lỗi kiểm tra key: ${keyCheckError.message}`);
+                    }
+
+                    if (!keyExists) {
+                        return interaction.editReply(`❌ Key \`${name}\` không tồn tại. Vui lòng tạo key trước bằng /addkey`);
+                    }
+
                     // Kiểm tra rule đã tồn tại
                     const existingRule = keyChannelCache.findRule(name);
                     if (existingRule) {
@@ -546,8 +595,10 @@ client.on("interactionCreate", async interaction => {
                         return interaction.editReply(`❌ ${insertError.message}`);
                     }
 
-                    // Reload cache
+                    // ✅ RELOAD CACHE SAU KHI THÊM
                     await keyChannelCache.reload();
+                    
+                    console.log("[DEBUG] Cache after add:", keyChannelCache.get().length, "rules");
 
                     const embed = new EmbedBuilder()
                         .setColor("#00FF00")
