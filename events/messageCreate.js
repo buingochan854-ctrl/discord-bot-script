@@ -1,89 +1,83 @@
 const supabase = require("../database/supabase");
 const { cleanKeyName } = require("../utils/helpers");
-const antiWebhook =
-require("../antiraid/antiWebhook");
+const keyChannelCache = require("../cache/keyChannelCache");
+
 module.exports = (client) => {
 
     client.on("messageCreate", async (message) => {
 
+        // Bỏ qua bot
         if (message.author.bot) return;
 
-if (message.webhookId) {
+        // Chỉ hoạt động trong server
+        if (!message.guild) return;
 
-    const blocked =
-        await antiWebhook(message);
+        // Không có nội dung
+        if (!message.content) return;
 
-    if (blocked)
-        return;
-
-}
-
-        // Lệnh ping
-        if (message.content.toLowerCase() === ".ping") {
-
-            try {
-
-                const msg = await message.reply("🏓 Đang kiểm tra...");
-
-                const apiPing = client.ws.ping;
-                const botPing = msg.createdTimestamp - message.createdTimestamp;
-
-                let status = "🟢 Ổn định";
-
-                if (apiPing > 200) status = "🟡 Khá";
-                if (apiPing > 500) status = "🔴 Chậm";
-
-                await msg.edit({
-                    content:
-`🏓 **Pong!**
-
-📡 API Ping: **${apiPing}ms**
-⚡ Bot Ping: **${botPing}ms**
-📶 Trạng thái: **${status}**
-
-🤖 Bot: **${client.user.tag}**
-🟢 Uptime: **${Math.floor(process.uptime())} giây**
-💾 RAM: **${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB**`
-                });
-
-            } catch (err) {
-
-                console.error("[Ping Command Error]", err);
-
-            }
-
-            return;
-        }
-
-        // Tìm key
-        const searchName = cleanKeyName(message.content);
+        const searchName = cleanKeyName(
+            message.content.trim()
+        );
 
         if (!searchName) return;
 
         try {
 
-            const { data, error } = await supabase
+            // ===========================
+            // TÌM KEY
+            // ===========================
+
+            const { data: target, error } = await supabase
                 .from("keys")
-                .select("name, value");
+                .select("name,value")
+                .eq("name", searchName)
+                .maybeSingle();
 
             if (error) {
-
-                console.error(error);
+                console.error("[Keys]", error);
                 return;
+            }
+
+            if (!target)
+                return;
+
+            // ===========================
+            // KIỂM TRA KEY CHANNEL
+            // ===========================
+
+            const result =
+                keyChannelCache.checkPermission(
+
+                    target.name,
+
+                    message.channel.id,
+
+                    message.guild.id
+
+                );
+
+            if (!result.allowed) {
+
+                return message.reply(
+                    result.message
+                );
 
             }
 
-            const target = data.find(
-                x => cleanKeyName(x.name) === searchName
+            // ===========================
+            // TRẢ KEY
+            // ===========================
+
+            return message.reply(
+                target.value
             );
-
-            if (!target) return;
-
-            await message.reply(target.value);
 
         } catch (err) {
 
-            console.error(err);
+            console.error(
+                "[MessageCreate]",
+                err
+            );
 
         }
 
