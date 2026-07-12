@@ -1,4 +1,5 @@
 const supabase = require("../database/supabase");
+const { cleanKeyName } = require("../utils/helpers");
 
 let cache = [];
 let lastUpdate = null;
@@ -32,7 +33,19 @@ async function load() {
         });
 
         lastUpdate = new Date();
-        console.log(`[KeyChannel] ✅ Loaded ${cache.length} rules (${cache.filter(r => r.mode === 'normal').length} normal, ${cache.filter(r => r.mode === 'suffix').length} suffix)`);
+        
+        // ===== DEBUG CACHE =====
+        console.log(`[KeyChannel] ✅ Loaded ${cache.length} rules`);
+        console.log(`[KeyChannel] Normal: ${cache.filter(r => r.mode === 'normal' || !r.mode).length}`);
+        console.log(`[KeyChannel] Suffix: ${cache.filter(r => r.mode === 'suffix').length}`);
+        
+        if (cache.length > 0) {
+            console.log(`[KeyChannel] Sample rules:`, cache.slice(0, 3).map(r => ({
+                mode: r.mode || 'normal',
+                name: r.name,
+                end: r.end
+            })));
+        }
         
         return true;
     } catch (err) {
@@ -62,10 +75,17 @@ function get() {
  * @returns {object|null} - Rule tìm thấy hoặc null
  */
 function findRule(keyName) {
-    if (!cache || cache.length === 0) return null;
+    if (!cache || cache.length === 0) {
+        console.log("[findRule] Cache empty");
+        return null;
+    }
 
     // Chuẩn hóa key name
     const key = keyName.toLowerCase();
+    
+    // ===== DEBUG =====
+    console.log(`[findRule] Searching for: "${key}"`);
+    console.log(`[findRule] Cache size: ${cache.length}`);
 
     for (const rule of cache) {
         // =========================================
@@ -73,7 +93,9 @@ function findRule(keyName) {
         // =========================================
         if (rule.mode === "suffix") {
             // Kiểm tra key kết thúc bằng hậu tố (không phân biệt hoa/thường)
-            if (key.endsWith(rule.end.toLowerCase())) {
+            const endsWithSuffix = key.endsWith(rule.end.toLowerCase());
+            if (endsWithSuffix) {
+                console.log(`[findRule] Found suffix rule: "${rule.end}" for key "${key}"`);
                 return rule;
             }
             continue;
@@ -98,11 +120,12 @@ function findRule(keyName) {
                 if (key !== ruleName) continue;
             }
 
-            // Tìm thấy rule phù hợp
+            console.log(`[findRule] Found normal rule: "${rule.name}" for key "${key}"`);
             return rule;
         }
     }
 
+    console.log(`[findRule] No rule found for key: "${key}"`);
     return null;
 }
 
@@ -114,15 +137,27 @@ function findRule(keyName) {
  * @returns {object} - { allowed: boolean, message?: string }
  */
 function checkPermission(keyName, channelId, guildId) {
+    console.log(`[checkPermission] Checking: "${keyName}" in channel ${channelId}, guild ${guildId}`);
+    
     const rule = findRule(keyName);
 
     // Không có rule → cho phép sử dụng
     if (!rule) {
+        console.log(`[checkPermission] No rule, allowing`);
         return { allowed: true };
     }
 
+    console.log(`[checkPermission] Found rule:`, {
+        mode: rule.mode,
+        name: rule.name,
+        end: rule.end,
+        guild_id: rule.guild_id,
+        channel_id: rule.channel_id
+    });
+
     // Kiểm tra Guild
     if (rule.guild_id && guildId !== rule.guild_id) {
+        console.log(`[checkPermission] Guild mismatch: ${guildId} !== ${rule.guild_id}`);
         return {
             allowed: false,
             message: rule.value || `❌ Key \`${keyName}\` không được phép sử dụng trong server này.`
@@ -131,6 +166,7 @@ function checkPermission(keyName, channelId, guildId) {
 
     // Kiểm tra Channel
     if (channelId !== rule.channel_id) {
+        console.log(`[checkPermission] Channel mismatch: ${channelId} !== ${rule.channel_id}`);
         return {
             allowed: false,
             message: rule.value || `❌ Key \`${keyName}\` không được phép sử dụng trong kênh này.`
@@ -138,6 +174,7 @@ function checkPermission(keyName, channelId, guildId) {
     }
 
     // Cho phép
+    console.log(`[checkPermission] Allowed`);
     return { allowed: true };
 }
 
