@@ -1,5 +1,4 @@
 const supabase = require("../database/supabase");
-const { cleanKeyName } = require("../utils/helpers");
 
 let cache = [];
 let lastUpdate = null;
@@ -18,30 +17,22 @@ async function load() {
             return false;
         }
 
-        // Sắp xếp theo độ dài name giảm dần để ưu tiên rule dài nhất
+        // Sắp xếp: ưu tiên rule mode=normal trước, sau đó mode=suffix
         cache = data.sort((a, b) => {
-            // Ưu tiên rule có name dài hơn
-            if (a.name.length !== b.name.length) {
+            // Ưu tiên mode normal trước
+            if (a.mode === 'normal' && b.mode === 'suffix') return -1;
+            if (a.mode === 'suffix' && b.mode === 'normal') return 1;
+            
+            // Nếu cùng mode, ưu tiên rule có name dài hơn
+            if (a.name && b.name) {
                 return b.name.length - a.name.length;
             }
-            // Nếu cùng độ dài, ưu tiên rule có end (không null)
-            if (a.end && !b.end) return -1;
-            if (!a.end && b.end) return 1;
+            
             return 0;
         });
 
         lastUpdate = new Date();
-        console.log(`[KeyChannel] ✅ Loaded ${cache.length} rules`);
-        
-        // Debug: In ra cache để kiểm tra
-        if (cache.length > 0) {
-            console.log(`[KeyChannel] First rule:`, {
-                name: cache[0].name,
-                end: cache[0].end,
-                guild_id: cache[0].guild_id,
-                channel_id: cache[0].channel_id
-            });
-        }
+        console.log(`[KeyChannel] ✅ Loaded ${cache.length} rules (${cache.filter(r => r.mode === 'normal').length} normal, ${cache.filter(r => r.mode === 'suffix').length} suffix)`);
         
         return true;
     } catch (err) {
@@ -74,23 +65,42 @@ function findRule(keyName) {
     if (!cache || cache.length === 0) return null;
 
     // Chuẩn hóa key name
-    const key = cleanKeyName(keyName);
-    
-    for (const rule of cache) {
-        // Chuẩn hóa rule name
-        const ruleName = cleanKeyName(rule.name);
-        
-        // Key phải bắt đầu bằng rule.name (đã clean)
-        if (!key.startsWith(ruleName)) continue;
+    const key = keyName.toLowerCase();
 
-        // Nếu rule có end, key phải kết thúc bằng end (đã clean)
-        if (rule.end) {
-            const ruleEnd = cleanKeyName(rule.end);
-            if (!key.endsWith(ruleEnd)) continue;
+    for (const rule of cache) {
+        // =========================================
+        // MODE: SUFFIX - Kiểm tra hậu tố
+        // =========================================
+        if (rule.mode === "suffix") {
+            // Kiểm tra key kết thúc bằng hậu tố (không phân biệt hoa/thường)
+            if (key.endsWith(rule.end.toLowerCase())) {
+                return rule;
+            }
+            continue;
         }
 
-        // Tìm thấy rule phù hợp
-        return rule;
+        // =========================================
+        // MODE: NORMAL - Kiểm tra tên key
+        // =========================================
+        if (rule.mode === "normal" || !rule.mode) {
+            // Chuẩn hóa rule name
+            const ruleName = rule.name ? rule.name.toLowerCase() : '';
+            
+            // Key phải bắt đầu bằng rule.name
+            if (!key.startsWith(ruleName)) continue;
+
+            // Nếu rule có end, key phải kết thúc bằng end
+            if (rule.end) {
+                const ruleEnd = rule.end.toLowerCase();
+                if (!key.endsWith(ruleEnd)) continue;
+            } else {
+                // Nếu không có end, key phải khớp chính xác với rule.name
+                if (key !== ruleName) continue;
+            }
+
+            // Tìm thấy rule phù hợp
+            return rule;
+        }
     }
 
     return null;
@@ -138,7 +148,10 @@ function getInfo() {
     return {
         size: cache.length,
         lastUpdate: lastUpdate,
+        normalRules: cache.filter(r => r.mode === 'normal' || !r.mode).length,
+        suffixRules: cache.filter(r => r.mode === 'suffix').length,
         rules: cache.map(r => ({
+            mode: r.mode || 'normal',
             name: r.name,
             end: r.end,
             guild_id: r.guild_id,
