@@ -894,4 +894,171 @@ client.on("interactionCreate", async interaction => {
                         .setTitle("🗑️ Đã xóa rule thành công")
                         .addFields(
                             { name: "📌 Key", value: `\`${name}\``, inline: true },
-                            { name: "🔚
+                            { name: "🔚 End", value: existingRule.end ? `\`${existingRule.end}\`` : "Không có", inline: true }
+                        )
+                        .setTimestamp();
+
+                    await interaction.editReply({ embeds: [embed] });
+
+                    await sendKeyLog({
+                        action: "Delete KeyChannel Rule",
+                        user: interaction.user,
+                        guildName: interaction.guild?.name || "Tin nhắn riêng",
+                        key: name,
+                        oldValue: `Đã xóa rule`
+                    });
+
+                } catch (err) {
+                    console.error("KeyChannel Delete Error:", err);
+                    return interaction.editReply("❌ Đã xảy ra lỗi khi xóa rule.");
+                }
+            }
+
+            // =========================================
+            // KEYCHANNEL REMOVE - Xóa rule (normal hoặc suffix)
+            // =========================================
+            if (subcommand === "remove") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return interaction.editReply("❌ Bạn không có quyền sử dụng lệnh này.");
+                }
+
+                try {
+                    const name = interaction.options.getString("name");
+                    const textend = interaction.options.getString("textend");
+
+                    let deletedRule = null;
+
+                    // Xóa rule normal theo name
+                    if (name) {
+                        const cleanName = cleanKeyName(name);
+                        
+                        const existingRule = keyChannelCache.findRule(cleanName);
+                        if (!existingRule || existingRule.mode === "suffix") {
+                            return interaction.editReply(`❌ Không tìm thấy rule normal cho key \`${name}\``);
+                        }
+
+                        deletedRule = existingRule;
+
+                        const { error: deleteError } = await supabase
+                            .from("key_channels")
+                            .delete()
+                            .eq("mode", "normal")
+                            .eq("name", cleanName);
+
+                        if (deleteError) {
+                            return interaction.editReply(`❌ ${deleteError.message}`);
+                        }
+                    }
+                    // Xóa rule suffix theo textend
+                    else if (textend) {
+                        const cleanEnd = textend.toLowerCase();
+                        
+                        const existingRules = keyChannelCache.get();
+                        const foundRule = existingRules.find(r => 
+                            r.mode === "suffix" && r.end.toLowerCase() === cleanEnd
+                        );
+
+                        if (!foundRule) {
+                            return interaction.editReply(`❌ Không tìm thấy rule hậu tố \`${textend}\``);
+                        }
+
+                        deletedRule = foundRule;
+
+                        const { error: deleteError } = await supabase
+                            .from("key_channels")
+                            .delete()
+                            .eq("mode", "suffix")
+                            .eq("end", cleanEnd);
+
+                        if (deleteError) {
+                            return interaction.editReply(`❌ ${deleteError.message}`);
+                        }
+                    } else {
+                        return interaction.editReply("❌ Vui lòng nhập **name** (cho rule normal) hoặc **textend** (cho rule suffix).");
+                    }
+
+                    // Reload cache
+                    await keyChannelCache.reload();
+
+                    const embed = new EmbedBuilder()
+                        .setColor("#FF0000")
+                        .setTitle("🗑️ Đã xóa Rule thành công")
+                        .addFields(
+                            { name: "📌 Loại", value: deletedRule.mode === "suffix" ? "Hậu tố" : "Normal", inline: true },
+                            { name: "📌 Tên", value: deletedRule.mode === "suffix" ? `\`*${deletedRule.end}\`` : `\`${deletedRule.name}\``, inline: true },
+                            { name: "📺 Channel", value: `<#${deletedRule.channel_id}>`, inline: true }
+                        )
+                        .setTimestamp();
+
+                    await interaction.editReply({ embeds: [embed] });
+
+                    await sendKeyLog({
+                        action: "Remove Rule",
+                        user: interaction.user,
+                        guildName: interaction.guild?.name || "Tin nhắn riêng",
+                        key: deletedRule.mode === "suffix" ? `*${deletedRule.end}` : deletedRule.name,
+                        oldValue: `Đã xóa rule ${deletedRule.mode}`
+                    });
+
+                } catch (err) {
+                    console.error("KeyChannel Remove Error:", err);
+                    return interaction.editReply("❌ Đã xảy ra lỗi khi xóa rule.");
+                }
+            }
+
+            // =========================================
+            // KEYCHANNEL INFO (Debug)
+            // =========================================
+            if (subcommand === "info") {
+                const info = keyChannelCache.getInfo();
+                
+                const embed = new EmbedBuilder()
+                    .setColor("#5865F2")
+                    .setTitle("ℹ️ Thông tin KeyChannel Cache")
+                    .addFields(
+                        { name: "📊 Tổng số rules", value: `\`${info.size}\``, inline: true },
+                        { name: "📌 Normal rules", value: `\`${info.normalRules || 0}\``, inline: true },
+                        { name: "🔚 Suffix rules", value: `\`${info.suffixRules || 0}\``, inline: true },
+                        { name: "🔄 Cập nhật lần cuối", value: info.lastUpdate ? `<t:${Math.floor(info.lastUpdate.getTime()/1000)}:R>` : "Chưa có", inline: false }
+                    )
+                    .setTimestamp();
+
+                return interaction.editReply({ embeds: [embed] });
+            }
+        }
+
+    } catch (err) {
+        console.error(err);
+        if (interaction.deferred) {
+            interaction.editReply("<:failed:1518595211205283992> Đã xảy ra lỗi không mong muốn trong hệ thống.");
+        }
+    }
+});
+
+// Login & Timeout check
+let loggedIn = false;
+
+(async () => {
+    try {
+        console.log("Starting Discord Login...");
+        await client.login(process.env.TOKEN);
+        loggedIn = true;
+        console.log("LOGIN SUCCESS");
+    } catch (err) {
+        console.error("LOGIN FAILED:", err);
+    }
+})();
+
+setTimeout(() => {
+    if (!loggedIn) console.log("LOGIN TIMEOUT 30 SECONDS - Token lỗi hoặc mạng có vấn đề!");
+}, 30000);
+
+http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("Bot Test Online");
+}).listen(process.env.PORT || 3000, () => {
+    console.log(`Web Server Running On Port ${process.env.PORT || 3000}`);
+});
+
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
