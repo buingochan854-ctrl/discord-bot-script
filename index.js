@@ -517,7 +517,9 @@ client.on("interactionCreate", async interaction => {
                     );
 
                     await interaction.editReply({ embeds: [disableEmbed], components: [disabledRow] });
-                } catch (err) {}
+                } catch (err) {
+                    console.error("ListKey collector error:", err);
+                }
             });
             return;
         }
@@ -906,7 +908,8 @@ client.on("interactionCreate", async interaction => {
 
             // =========================================
             // KEYCHANNEL DELETE
-            // =========================================            if (subcommand === "delete") {
+            // =========================================
+            if (subcommand === "delete") {
                 if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                     return interaction.editReply("❌ Bạn không có quyền sử dụng lệnh này.");
                 }
