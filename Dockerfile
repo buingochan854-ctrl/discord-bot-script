@@ -22,12 +22,25 @@ RUN npm install
 # Copy toàn bộ source
 COPY . .
 
-# ===== DEBUG =====
-RUN echo "========== INDEX.JS LINE 330-400 =========="
-RUN nl -ba index.js | sed -n '330,400p'
+# ==========================
+# DEBUG SYNTAX
+# ==========================
+
+RUN echo "========== TRY ==========" && \
+    grep -n "try" index.js || true
+
+RUN echo "========== CATCH ==========" && \
+    grep -n "catch" index.js || true
+
+RUN echo "========== LINE 1000-1090 ==========" && \
+    nl -ba index.js | sed -n '1000,1090p'
 
 # Kiểm tra cú pháp
 RUN node --check index.js
+
+# ==========================
+# Runtime
+# ==========================
 
 # Tạo thư mục cần thiết
 RUN mkdir -p downloads
