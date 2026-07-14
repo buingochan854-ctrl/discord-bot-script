@@ -1,8 +1,7 @@
 // ===== DEBUG: Log khi file được require =====
 console.log("📦 messageCreate.js loaded");
 
-const supabase = require("../database/supabase");
-const { cleanKeyName } = require("../utils/helpers");
+const keyCache = require("../cache/keyCache");
 const keyChannelCache = require("../cache/keyChannelCache");
 
 module.exports = (client) => {
@@ -25,32 +24,12 @@ module.exports = (client) => {
         }
 
         const content = message.content.trim();
-        const searchName = cleanKeyName(content);
 
-        // ===== DEBUG LOG 2: Kiểm tra searchName =====
-        console.log(`[QUERY] Searching key: "${searchName}"`);
+        // ===== DEBUG LOG 2: Lấy key từ cache =====
+        console.log(`[QUERY] Searching key: "${content}"`);
+        const target = keyCache.get(content);
 
-        const { data, error } = await supabase
-            .from("keys")
-            .select("name, value");
-
-        if (error) {
-            console.error("[Supabase Error]", error);
-            return;
-        }
-
-        if (!data || data.length === 0) {
-            console.log("[DEBUG] No keys found in database");
-            return;
-        }
-
-        // ===== DEBUG LOG 3: Kiểm tra data từ Supabase =====
-        console.log("[DATA]", data.map(x => x.name));
-
-        // Tìm key bằng cleanKeyName
-        const target = data.find(x => cleanKeyName(x.name) === searchName);
-
-        // ===== DEBUG LOG 4: Kiểm tra target =====
+        // ===== DEBUG LOG 3: Kiểm tra target =====
         console.log("[TARGET]", target ? target.name : "NOT FOUND");
 
         if (!target) return;
@@ -63,7 +42,7 @@ module.exports = (client) => {
                 message.guild.id
             );
 
-            // ===== DEBUG LOG 5: Kiểm tra permission =====
+            // ===== DEBUG LOG 4: Kiểm tra permission =====
             console.log("[PERMISSION]", result);
 
             if (!result.allowed) {
