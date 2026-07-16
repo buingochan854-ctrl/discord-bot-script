@@ -1,29 +1,17 @@
 const { ActivityType } = require("discord.js");
+const keyCache = require("../cache/keyCache");
 
-async function updateBotStatus(client, supabase) {
+async function updateBotStatus(client) {
     try {
-        const { count, error } = await supabase
-            .from("keys")
-            .select("*", {
-                count: "exact",
-                head: true
-            });
+        const count = keyCache.size();
+        const ping = Math.round(client.ws.ping);
 
-        if (error) {
-            console.error("[Status]", error);
-            return;
-        }
-
-        client.user.setActivity({
-            name: `${count} Keys`,
+        await client.user.setActivity(`${count} Keys • ${ping} ms`, {
             type: ActivityType.Watching
         });
-
     } catch (err) {
-        console.error("[Status]", err);
+        console.error("[Status Update Error]", err);
     }
 }
 
-module.exports = {
-    updateBotStatus
-}; 
+module.exports = { updateBotStatus };
