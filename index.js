@@ -220,6 +220,14 @@ client.once("clientReady", async () => {
         keyChannelCache.load()
     ]);
 
+    // Cập nhật trạng thái lần đầu
+    await updateBotStatus(client);
+
+    // Cập nhật lại mỗi 15 giây (để làm mới ping)
+    setInterval(() => {
+        updateBotStatus(client);
+    }, 15000);
+
     // Voice 24/7
     try {
         const guild = client.guilds.cache.get(TARGET_GUILD_ID);
@@ -258,10 +266,6 @@ client.once("clientReady", async () => {
                 { body: commands }
             );
             console.log("Slash Commands Loaded");
-            await updateBotStatus(client, supabase);
-            setInterval(() => {
-                updateBotStatus(client, supabase);
-            }, 600000);
         }
     } catch (err) {
         console.error("Supabase Error:", err);
@@ -349,6 +353,9 @@ client.on("interactionCreate", async interaction => {
             // Update cache
             keyCache.set(name, value);
 
+            // Cập nhật status ngay (không chặn)
+            setImmediate(() => updateBotStatus(client));
+
             setImmediate(() => {
                 sendKeyLog({
                     action: "Add Key",
@@ -357,7 +364,6 @@ client.on("interactionCreate", async interaction => {
                     key: name,
                     newValue: value
                 });
-                updateBotStatus(client, supabase);
             });
 
             return interaction.editReply(`<:success:1518594913179013141> Đã lưu key: \`${name}\``);
@@ -457,6 +463,9 @@ client.on("interactionCreate", async interaction => {
                 keyChannelCache.removeRule(target.name, null);
             }
 
+            // Cập nhật status ngay
+            setImmediate(() => updateBotStatus(client));
+
             setImmediate(() => {
                 sendKeyLog({
                     action: "Delete Key",
@@ -465,7 +474,6 @@ client.on("interactionCreate", async interaction => {
                     key: name,
                     oldValue: target.value
                 });
-                updateBotStatus(client, supabase);
             });
 
             return interaction.editReply(`<:success:1518594913179013141> Đã xóa thành công key: \`${name}\``);
@@ -507,9 +515,13 @@ client.on("interactionCreate", async interaction => {
                     .eq("name", target.name);
                 if (!updRuleErr) {
                     keyChannelCache.removeRule(target.name, null);
-                    await keyChannelCache.reload(); // or addRule
+                    // Cần reload vì addRule phức tạp hơn
+                    await keyChannelCache.reload();
                 }
             }
+
+            // Cập nhật status (tùy chọn, để làm mới ping)
+            setImmediate(() => updateBotStatus(client));
 
             setImmediate(() => {
                 sendKeyLog({
@@ -522,7 +534,6 @@ client.on("interactionCreate", async interaction => {
                     oldName: target.name,
                     newName: finalName
                 });
-                updateBotStatus(client, supabase);
             });
 
             return interaction.editReply(`<:success:1518594913179013141> Đã chỉnh sửa thành công key: \`${name}\``);
