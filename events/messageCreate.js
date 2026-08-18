@@ -1,4 +1,8 @@
-// ===== DEBUG =====
+// =====================================================
+// messageCreate.js
+// Key System + KeyChannel + YouTube Downloader
+// =====================================================
+
 console.log("📦 messageCreate.js loaded");
 
 const fs = require("fs");
@@ -25,31 +29,37 @@ const DOWNLOAD_DIR = "/tmp/yt-downloads";
 
 function prepareCookie() {
     try {
-        if (!process.env.COOKIE_YT) {
-            console.log("[YT] ⚠️ COOKIE_YT không tồn tại");
+        const cookie = process.env.COOKIE_YT;
+
+        if (!cookie) {
+            console.log("[YT-DLP] ⚠️ COOKIE_YT chưa được cấu hình");
             return false;
         }
 
         fs.writeFileSync(
             COOKIE_FILE,
-            process.env.COOKIE_YT,
+            cookie,
             {
                 encoding: "utf8",
                 mode: 0o600
             }
         );
 
-        console.log("[YT] ✅ Đã tạo cookies.txt");
+        console.log("[YT-DLP] ✅ Đã tạo cookies.txt từ COOKIE_YT");
 
         return true;
-    } catch (err) {
-        console.error("[YT] Cookie error:", err);
+    } catch (error) {
+        console.error(
+            "[YT-DLP] Cookie error:",
+            error
+        );
+
         return false;
     }
 }
 
 // =====================================================
-// YOUTUBE URL
+// YOUTUBE URL DETECTOR
 // =====================================================
 
 function getYouTubeUrl(content) {
@@ -58,7 +68,9 @@ function getYouTubeUrl(content) {
 
     const match = content.match(regex);
 
-    if (!match) return null;
+    if (!match) {
+        return null;
+    }
 
     return match[0].replace(/[)>.,]+$/, "");
 }
@@ -67,156 +79,199 @@ function getYouTubeUrl(content) {
 // DOWNLOAD YOUTUBE
 // =====================================================
 
-function downloadYouTube(url) {
-    return new Promise(async (resolve, reject) => {
-        try {
-            if (!prepareCookie()) {
-                return reject(
-                    new Error("COOKIE_YT chưa được cấu hình")
-                );
-            }
+async function downloadYouTube(url) {
 
-            fs.mkdirSync(DOWNLOAD_DIR, {
-                recursive: true
-            });
+    if (!prepareCookie()) {
+        throw new Error(
+            "COOKIE_YT chưa được cấu hình trên Railway"
+        );
+    }
 
-            const output = path.join(
-                DOWNLOAD_DIR,
-                `${Date.now()}-%(id)s.%(ext)s`
-            );
+    fs.mkdirSync(
+        DOWNLOAD_DIR,
+        {
+            recursive: true
+        }
+    );
 
-            console.log("[YT] 🔎 URL:", url);
-            console.log("[YT] 📁 Output:", output);
+    const output = path.join(
+        DOWNLOAD_DIR,
+        `${Date.now()}-%(id)s.%(ext)s`
+    );
 
-            console.log(
-                "[YT-DLP] Binary:",
-                ytDlp.path || "unknown"
-            );
+    console.log(
+        "[YT-DLP] ▶️ yt-dlp:",
+        url
+    );
 
-            const process = ytDlp.exec(url, {
-                cookies: COOKIE_FILE,
+    console.log(
+        "[YT-DLP] 📁 Output:",
+        output
+    );
 
-                noPlaylist: true,
+    try {
 
-                format:
-                    "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+        // Không dùng spawn("yt-dlp")
+        // yt-dlp-exec sẽ quản lý executable
+        const subprocess = ytDlp(url, {
 
-                mergeOutputFormat: "mp4",
+            cookies: COOKIE_FILE,
 
-                noPart: true,
+            noPlaylist: true,
 
-                output: output,
+            format:
+                "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
 
-                noWarnings: true
-            });
+            mergeOutputFormat: "mp4",
 
-            let stderr = "";
+            output: output,
 
-            process.stdout?.on("data", data => {
-                console.log(
-                    `[YT-DLP] ${data.toString().trim()}`
-                );
-            });
+            noPart: true,
 
-            process.stderr?.on("data", data => {
-                const text = data.toString();
+            noWarnings: true,
 
-                stderr += text;
+            preferFreeFormats: false
+        });
 
-                console.log(
-                    `[YT-DLP ERROR] ${text.trim()}`
-                );
-            });
+        let stderr = "";
 
-            process.on("error", err => {
-                reject(
-                    new Error(
-                        `Không chạy được yt-dlp: ${err.message}`
-                    )
-                );
-            });
-
-            process.on("close", code => {
-
-                if (code !== 0) {
-                    return reject(
-                        new Error(
-                            stderr.trim() ||
-                            `yt-dlp exit code ${code}`
-                        )
+        if (subprocess.stdout) {
+            subprocess.stdout.on(
+                "data",
+                data => {
+                    console.log(
+                        `[YT-DLP] ${data.toString().trim()}`
                     );
                 }
-
-                try {
-                    const files =
-                        fs.readdirSync(DOWNLOAD_DIR)
-                            .filter(file =>
-                                file.endsWith(".mp4") ||
-                                file.endsWith(".webm") ||
-                                file.endsWith(".mkv")
-                            )
-                            .map(file => {
-
-                                const filePath =
-                                    path.join(
-                                        DOWNLOAD_DIR,
-                                        file
-                                    );
-
-                                return {
-                                    path: filePath,
-                                    time:
-                                        fs.statSync(
-                                            filePath
-                                        ).mtimeMs
-                                };
-                            })
-                            .sort(
-                                (a, b) =>
-                                    b.time - a.time
-                            );
-
-                    if (!files.length) {
-                        return reject(
-                            new Error(
-                                "Không tìm thấy file video"
-                            )
-                        );
-                    }
-
-                    resolve(files[0].path);
-
-                } catch (err) {
-                    reject(err);
-                }
-            });
-
-        } catch (err) {
-            reject(err);
+            );
         }
-    });
+
+        if (subprocess.stderr) {
+            subprocess.stderr.on(
+                "data",
+                data => {
+
+                    const text =
+                        data.toString();
+
+                    stderr += text;
+
+                    console.log(
+                        `[YT-DLP] ${text.trim()}`
+                    );
+                }
+            );
+        }
+
+        await subprocess;
+
+    } catch (error) {
+
+        console.error(
+            "[YT-DLP] Process error:",
+            error
+        );
+
+        throw new Error(
+            error?.message ||
+            "yt-dlp không thể tải video"
+        );
+    }
+
+    // =================================================
+    // FIND DOWNLOADED FILE
+    // =================================================
+
+    let files;
+
+    try {
+
+        files = fs
+            .readdirSync(DOWNLOAD_DIR)
+            .filter(file =>
+                file.endsWith(".mp4") ||
+                file.endsWith(".mkv") ||
+                file.endsWith(".webm")
+            )
+            .map(file => {
+
+                const filePath =
+                    path.join(
+                        DOWNLOAD_DIR,
+                        file
+                    );
+
+                return {
+                    path: filePath,
+                    time:
+                        fs.statSync(
+                            filePath
+                        ).mtimeMs
+                };
+            })
+            .sort(
+                (a, b) =>
+                    b.time - a.time
+            );
+
+    } catch (error) {
+
+        throw new Error(
+            "Không thể đọc file video sau khi tải"
+        );
+    }
+
+    if (!files.length) {
+
+        throw new Error(
+            "yt-dlp đã chạy nhưng không tìm thấy file video"
+        );
+    }
+
+    const videoPath =
+        files[0].path;
+
+    console.log(
+        "[YT-DLP] ✅ Download:",
+        videoPath
+    );
+
+    return videoPath;
 }
 
 // =====================================================
-// DELETE TEMP FILE
+// DELETE FILE
 // =====================================================
 
 function deleteFile(filePath) {
+
+    if (!filePath) {
+        return;
+    }
+
     try {
+
         if (
-            filePath &&
-            fs.existsSync(filePath)
+            fs.existsSync(
+                filePath
+            )
         ) {
-            fs.unlinkSync(filePath);
+
+            fs.unlinkSync(
+                filePath
+            );
 
             console.log(
-                "[YT] 🗑️ Đã xóa file tạm"
+                "[YT-DLP] 🗑️ Đã xóa file tạm:",
+                filePath
             );
         }
-    } catch (err) {
+
+    } catch (error) {
+
         console.error(
-            "[YT] Delete error:",
-            err.message
+            "[YT-DLP] Delete error:",
+            error
         );
     }
 }
@@ -226,21 +281,24 @@ function deleteFile(filePath) {
 // =====================================================
 
 function cleanError(error) {
+
     let text =
         error?.message ||
         String(error);
 
+    // Xóa ANSI color
+    text = text.replace(
+        /\x1B\[[0-?]*[ -/]*[@-~]/g,
+        ""
+    );
+
     text = text
-        .replace(
-            /\x1B\[[0-?]*[ -/]*[@-~]/g,
-            ""
-        )
         .replace(/\s+/g, " ")
         .trim();
 
-    if (text.length > 700) {
+    if (text.length > 800) {
         text =
-            text.slice(0, 700) +
+            text.substring(0, 800) +
             "...";
     }
 
@@ -276,16 +334,24 @@ module.exports = (client) => {
                 // =================================================
 
                 if (message.author.bot) {
+
                     console.log(
                         "[DEBUG] Bot message, ignored"
                     );
+
                     return;
                 }
 
+                // =================================================
+                // EMPTY MESSAGE
+                // =================================================
+
                 if (!message.content) {
+
                     console.log(
                         "[DEBUG] Empty content, ignored"
                     );
+
                     return;
                 }
 
@@ -293,16 +359,18 @@ module.exports = (client) => {
                     message.content.trim();
 
                 // =================================================
-                // YOUTUBE
+                // YOUTUBE DETECTION
                 // =================================================
 
                 const youtubeUrl =
-                    getYouTubeUrl(content);
+                    getYouTubeUrl(
+                        content
+                    );
 
                 if (youtubeUrl) {
 
                     console.log(
-                        `[YT] 🔎 Phát hiện link: ${youtubeUrl}`
+                        `[YT] 🔎 Phát hiện YouTube: ${youtubeUrl}`
                     );
 
                     let loadingMessage =
@@ -313,23 +381,27 @@ module.exports = (client) => {
 
                     try {
 
-                        // =============================================
-                        // LOADING
-                        // =============================================
+                        // =========================================
+                        // LOADING MESSAGE
+                        // =========================================
 
                         loadingMessage =
                             await message.reply(
                                 `${LOADING} Đang Tải Video`
                             );
 
-                        // =============================================
+                        // =========================================
                         // DOWNLOAD
-                        // =============================================
+                        // =========================================
 
                         videoPath =
                             await downloadYouTube(
                                 youtubeUrl
                             );
+
+                        // =========================================
+                        // CHECK FILE
+                        // =========================================
 
                         if (
                             !videoPath ||
@@ -337,14 +409,11 @@ module.exports = (client) => {
                                 videoPath
                             )
                         ) {
+
                             throw new Error(
                                 "Không tìm thấy video sau khi tải"
                             );
                         }
-
-                        // =============================================
-                        // SIZE
-                        // =============================================
 
                         const stats =
                             fs.statSync(
@@ -357,12 +426,12 @@ module.exports = (client) => {
                             1024;
 
                         console.log(
-                            `[YT] 📦 Video: ${sizeMB.toFixed(2)} MB`
+                            `[YT-DLP] 📦 File size: ${sizeMB.toFixed(2)} MB`
                         );
 
-                        // =============================================
-                        // DISCORD UPLOAD
-                        // =============================================
+                        // =========================================
+                        // SEND VIDEO
+                        // =========================================
 
                         try {
 
@@ -382,9 +451,11 @@ module.exports = (client) => {
                                 ]
                             });
 
+                            // Xóa loading
                             if (
                                 loadingMessage
                             ) {
+
                                 await loadingMessage
                                     .delete()
                                     .catch(
@@ -393,13 +464,17 @@ module.exports = (client) => {
                             }
 
                             console.log(
-                                "[YT] ✅ Upload thành công"
+                                "[YT-DLP] ✅ Gửi video thành công"
                             );
 
                         } catch (uploadError) {
 
+                            // =====================================
+                            // DISCORD FILE TOO LARGE
+                            // =====================================
+
                             console.error(
-                                "[YT] ❌ Upload failed:",
+                                "[YT-DLP] ❌ Upload failed:",
                                 uploadError
                             );
 
@@ -417,6 +492,7 @@ module.exports = (client) => {
                                     )
                                     .catch(
                                         async () => {
+
                                             await message.reply(
                                                 fallback
                                             );
@@ -432,6 +508,10 @@ module.exports = (client) => {
                         }
 
                     } catch (error) {
+
+                        // =========================================
+                        // DOWNLOAD ERROR
+                        // =========================================
 
                         console.error(
                             "[YT ERROR]",
@@ -456,6 +536,7 @@ module.exports = (client) => {
                                 )
                                 .catch(
                                     async () => {
+
                                         await message.reply(
                                             errorMessage
                                         );
@@ -471,16 +552,16 @@ module.exports = (client) => {
 
                     } finally {
 
-                        // =============================================
+                        // =========================================
                         // CLEANUP
-                        // =============================================
+                        // =========================================
 
                         deleteFile(
                             videoPath
                         );
                     }
 
-                    // Không xử lý YouTube URL như Key
+                    // Không tiếp tục kiểm tra Key
                     return;
                 }
 
@@ -504,10 +585,12 @@ module.exports = (client) => {
                         : "NOT FOUND"
                 );
 
-                if (!target) return;
+                if (!target) {
+                    return;
+                }
 
                 // =================================================
-                // KEY CHANNEL
+                // KEY CHANNEL PERMISSION
                 // =================================================
 
                 try {
@@ -537,11 +620,11 @@ module.exports = (client) => {
                         target.value
                     );
 
-                } catch (err) {
+                } catch (error) {
 
                     console.error(
                         "[Key Check Error]",
-                        err
+                        error
                     );
 
                     return message.reply(
@@ -549,11 +632,11 @@ module.exports = (client) => {
                     );
                 }
 
-            } catch (err) {
+            } catch (error) {
 
                 console.error(
                     "[messageCreate Error]",
-                    err
+                    error
                 );
             }
         }
