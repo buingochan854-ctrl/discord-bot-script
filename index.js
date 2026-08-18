@@ -1,13 +1,61 @@
-const { exec } = require("child_process");
+const fs = require("fs");
+const { exec, spawn } = require("child_process");
 
-// exec("yt-dlp --version", (err, stdout, stderr) => {
-//     console.log("YT-DLP VERSION:", stdout || stderr || err?.message);
-// });
+// ---------- 1. TẠO COOKIE CHO YT-DLP TỪ BIẾN MÔI TRƯỜNG ----------
+const COOKIE_FILE = "/tmp/cookies.txt";
 
+if (process.env.COOKIE_YT) {
+    fs.writeFileSync(COOKIE_FILE, process.env.COOKIE_YT, {
+        encoding: "utf8",
+        mode: 0o600
+    });
+    console.log("[YT-DLP] ✅ Đã tạo cookies.txt từ COOKIE_YT");
+} else {
+    console.log("[YT-DLP] ⚠️ Không tìm thấy COOKIE_YT");
+}
+
+// ---------- 2. HÀM TẢI VIDEO YOUTUBE BẰNG YT-DLP ----------
+function downloadYoutube(url, output) {
+    return new Promise((resolve, reject) => {
+        const args = [
+            "--cookies",
+            COOKIE_FILE,
+            "-f",
+            "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]",
+            "--merge-output-format",
+            "mp4",
+            "-o",
+            output,
+            url
+        ];
+
+        const proc = spawn("yt-dlp", args);
+
+        let stderr = "";
+
+        proc.stderr.on("data", data => {
+            stderr += data.toString();
+        });
+
+        proc.on("close", code => {
+            if (code === 0) {
+                resolve(output);
+            } else {
+                reject(new Error(stderr || `yt-dlp exit code ${code}`));
+            }
+        });
+    });
+}
+
+// Export hàm ra module để các file sự kiện (như events/messageCreate.js) có thể gọi dùng
+module.exports = { downloadYoutube };
+
+// ---------- 3. KIỂM TRA MÔI TRƯỜNG FFMPEG ----------
 exec("ffmpeg -version", (err, stdout, stderr) => {
     console.log("FFMPEG:", stdout?.split("\n")[0] || stderr || err?.message);
 });
 
+// ---------- 4. DISCORD.JS SETUP & IMPORTS ----------
 const { 
     Client, 
     GatewayIntentBits, 
@@ -520,7 +568,7 @@ client.on("interactionCreate", async interaction => {
                 }
             }
 
-            // Cập nhật status (tùy chọn, để làm mới ping)
+            // Cập nhật status
             setImmediate(() => updateBotStatus(client));
 
             setImmediate(() => {
@@ -725,7 +773,7 @@ client.on("interactionCreate", async interaction => {
                     const { error } = await supabase.from("key_channels").update(updateData).eq("name", existing.name);
                     if (error) return interaction.editReply(`❌ ${error.message}`);
 
-                    // Reload keyChannel cache (vì đã sửa)
+                    // Reload keyChannel cache
                     await keyChannelCache.reload();
 
                     const embed = new EmbedBuilder()
@@ -948,3 +996,4 @@ http.createServer((req, res) => {
 
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
+
