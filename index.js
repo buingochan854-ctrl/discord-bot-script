@@ -1,3 +1,8 @@
+console.log("========== BUILD CHECK ==========");
+console.log("BUILD TIME:", new Date().toISOString());
+console.log("YT-DLP CHECK VERSION: NEW");
+console.log("=================================");
+
 const fs = require("fs");
 const { exec, spawn } = require("child_process");
 
