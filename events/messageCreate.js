@@ -5,226 +5,209 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
+const ytDlp = require("yt-dlp-exec");
+const ffmpegPath = require("ffmpeg-static");
+
 const keyCache = require("../cache/keyCache");
 const keyChannelCache = require("../cache/keyChannelCache");
 
-// yt-dlp-exec
-const ytDlp = require("yt-dlp-exec");
+const LOADING_EMOJI = "<a:loading:1538771492681289828>";
+const SUCCESS_EMOJI = "<:success:1518594913179013141>";
+const FAILED_EMOJI = "<:failed:1518595211205283992>";
 
-// Discord attachment giới hạn tùy server/boost.
-// Để an toàn, nếu file quá lớn thì gửi link YouTube.
 const MAX_DISCORD_FILE_SIZE = 25 * 1024 * 1024;
 
-// Emoji của bot
-const LOADING = "<a:loading:1538771492681289828>";
-const SUCCESS = "<:success:1518594913179013141>";
-const FAILED = "<:failed:1518595211205283992>";
+// ==============================
+// YouTube URL
+// ==============================
 
-function isYouTubeUrl(text) {
-    return /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)/i.test(text);
+function getYouTubeUrl(content) {
+    const regex =
+        /https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?v=[\w-]+|shorts\/[\w-]+|live\/[\w-]+)|youtu\.be\/[\w-]+)/i;
+
+    const match = content.match(regex);
+    return match ? match[0] : null;
 }
 
-function extractYouTubeUrl(text) {
-    const match = text.match(
-        /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=[^\s]+|youtu\.be\/[^\s]+|youtube\.com\/shorts\/[^\s]+)/i
-    );
+// ==============================
+// Cookie
+// ==============================
 
-    if (!match) return null;
-
-    // Bỏ dấu ngoặc/markdown nếu người dùng gửi link dạng [text](url)
-    return match[0]
-        .replace(/[)>]+$/g, "")
-        .trim();
-}
-
-function getCookiesFile() {
+function createCookieFile() {
     const cookie = process.env.COOKIE_YT;
 
     if (!cookie) {
-        console.log("[YT-DLP] ⚠️ Không có COOKIE_YT");
+        console.log("[YT-DLP] ⚠️ COOKIE_YT chưa được cấu hình.");
         return null;
     }
 
     const cookiePath = path.join(os.tmpdir(), "cookies.txt");
 
     try {
+        /*
+         * COOKIE_YT có thể là nội dung Netscape cookie
+         * hoặc được lưu dưới dạng một chuỗi nhiều dòng.
+         */
         fs.writeFileSync(cookiePath, cookie, "utf8");
-        console.log("[YT-DLP] ✅ Đã tạo cookies.txt từ COOKIE_YT");
+
+        console.log("[YT-DLP] ✅ Đã tạo cookies.txt");
+
         return cookiePath;
     } catch (err) {
-        console.error("[YT-DLP] Cookie error:", err);
+        console.error("[YT-DLP] Cookie Error:", err);
         return null;
     }
 }
 
+// ==============================
+// Format lỗi
+// ==============================
+
+function cleanError(error) {
+    if (!error) return "Lỗi không xác định";
+
+    let text = "";
+
+    if (typeof error === "string") {
+        text = error;
+    } else {
+        text =
+            error.stderr ||
+            error.stdout ||
+            error.message ||
+            String(error);
+    }
+
+    text = text
+        .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "")
+        .trim();
+
+    if (text.length > 1500) {
+        text = text.substring(0, 1500) + "...";
+    }
+
+    return text;
+}
+
+// ==============================
+// Download YouTube
+// ==============================
+
 async function downloadYouTube(url) {
-    const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "youtube-")
-    );
+    const outputDir = path.join(os.tmpdir(), "youtube-downloads");
+
+    fs.mkdirSync(outputDir, {
+        recursive: true
+    });
 
     const outputTemplate = path.join(
-        tempDir,
-        "video.%(ext)s"
+        outputDir,
+        `video-${Date.now()}-%(id)s.%(ext)s`
     );
 
-    const cookiePath = getCookiesFile();
+    const cookiePath = createCookieFile();
+
+    console.log("[YT] ▶️ yt-dlp-exec:", url);
 
     try {
-        console.log(`[YT] ▶️ yt-dlp: ${url}`);
+        const args = {
+            noPlaylist: true,
 
-        const options = {
+            /*
+             * Ưu tiên MP4.
+             * Giới hạn 720p để giảm kích thước file.
+             */
+            format:
+                "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best",
+
             output: outputTemplate,
-
-            // MP4
-            format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
 
             mergeOutputFormat: "mp4",
 
-            // Không tải playlist
-            noPlaylist: true,
+            noWarnings: true,
 
-            // Hạn chế lỗi mạng
-            retries: 3,
-            fragmentRetries: 3,
-
-            // Quiet để log không quá dài
-            noWarnings: false
+            ffmpegLocation: ffmpegPath
         };
 
         if (cookiePath) {
-            options.cookies = cookiePath;
+            args.cookies = cookiePath;
         }
 
-        await ytDlp(url, options);
+        await ytDlp(url, args);
 
-        const files = fs.readdirSync(tempDir);
+        const files = fs
+            .readdirSync(outputDir)
+            .map(file => ({
+                name: file,
+                path: path.join(outputDir, file),
+                time: fs.statSync(path.join(outputDir, file)).mtimeMs
+            }))
+            .filter(file =>
+                /\.(mp4|mkv|webm|mov)$/i.test(file.name)
+            )
+            .sort((a, b) => b.time - a.time);
 
-        const videoFile = files.find(file =>
-            /\.(mp4|mkv|webm|mov)$/i.test(file)
-        );
-
-        if (!videoFile) {
-            throw new Error("Không tìm thấy file video sau khi tải.");
+        if (!files.length) {
+            throw new Error("yt-dlp không tạo được file video.");
         }
 
-        const filePath = path.join(tempDir, videoFile);
-
-        const stat = fs.statSync(filePath);
+        const video = files[0];
 
         console.log(
-            `[YT] ✅ Tải thành công: ${videoFile} (${stat.size} bytes)`
+            `[YT] ✅ Download thành công: ${video.name}`
         );
 
-        return {
-            filePath,
-            tempDir,
-            size: stat.size
-        };
+        return video.path;
 
-    } catch (err) {
-        try {
-            fs.rmSync(tempDir, {
-                recursive: true,
-                force: true
-            });
-        } catch {}
-
-        throw err;
-    }
-}
-
-function cleanupTemp(tempDir) {
-    try {
-        if (tempDir && fs.existsSync(tempDir)) {
-            fs.rmSync(tempDir, {
-                recursive: true,
-                force: true
-            });
-        }
-    } catch (err) {
-        console.error("[YT] Cleanup error:", err);
-    }
-}
-
-async function handleYouTube(message, url) {
-    console.log(`[YT] 🔎 Phát hiện YouTube: ${url}`);
-
-    let loadingMessage;
-
-    try {
-        loadingMessage = await message.reply(
-            `${LOADING} Đang Tải Video`
+    } catch (error) {
+        console.error(
+            "[YT ERROR]",
+            cleanError(error)
         );
 
-        const result = await downloadYouTube(url);
-
-        // Discord giới hạn upload
-        if (result.size > MAX_DISCORD_FILE_SIZE) {
-            cleanupTemp(result.tempDir);
-
-            return loadingMessage.edit(
-                `${SUCCESS} <@${message.author.id}> Video của bạn quá lớn để gửi trực tiếp.\n\n` +
-                `**Youtube • Ấn vào đây để mở video**\n${url}`
-            );
-        }
-
-        try {
-            await loadingMessage.edit({
-                content: `${SUCCESS} <@${message.author.id}> Video của bạn:`,
-                files: [
-                    {
-                        attachment: result.filePath,
-                        name: "video.mp4"
-                    }
-                ]
-            });
-        } catch (uploadError) {
-            console.error("[YT UPLOAD ERROR]", uploadError);
-
-            // Nếu Discord từ chối upload vì kích thước
-            await loadingMessage.edit(
-                `${SUCCESS} <@${message.author.id}> Video quá lớn để gửi trực tiếp.\n\n` +
-                `**Youtube • Ấn vào đây để mở video**\n${url}`
-            );
-        }
-
-        cleanupTemp(result.tempDir);
-
-    } catch (err) {
-        console.error("[YT ERROR]", err);
-
-        if (loadingMessage) {
-            const errorText =
-                err?.stderr ||
-                err?.message ||
-                String(err);
-
-            // Không gửi log lỗi quá dài
-            const shortError = errorText
-                .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "")
-                .slice(0, 1000);
-
-            await loadingMessage.edit(
-                `${FAILED} Lỗi khi tải: \`${shortError}\``
-            ).catch(() => {});
-        } else {
-            await message.reply(
-                `${FAILED} Lỗi khi tải video.`
-            ).catch(() => {});
-        }
+        throw new Error(cleanError(error));
     }
 }
+
+// ==============================
+// Xóa file
+// ==============================
+
+function deleteFile(filePath) {
+    try {
+        if (filePath && fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log("[YT] 🗑️ Đã xóa:", filePath);
+        }
+    } catch (err) {
+        console.error("[YT] Delete Error:", err);
+    }
+}
+
+// ==============================
+// Message Event
+// ==============================
 
 module.exports = (client) => {
+
     console.log("✅ messageCreate registered");
 
-    client.on("messageCreate", async (message) => {
+    client.on("messageCreate", async message => {
+
         try {
+
+            // ==========================
+            // DEBUG
+            // ==========================
+
             console.log(
                 `[MESSAGE] ${message.author.tag}: ${message.content}`
             );
 
-            // Bot không xử lý tin nhắn của bot
+            // ==========================
+            // Bỏ qua bot
+            // ==========================
+
             if (message.author.bot) {
                 console.log("[DEBUG] Bot message, ignored");
                 return;
@@ -237,29 +220,179 @@ module.exports = (client) => {
 
             const content = message.content.trim();
 
-            // =========================================================
-            // YOUTUBE
-            // =========================================================
+            // ==================================================
+            // YOUTUBE AUTO DETECT
+            // ==================================================
 
-            if (isYouTubeUrl(content)) {
-                const youtubeUrl = extractYouTubeUrl(content);
+            const youtubeUrl = getYouTubeUrl(content);
 
-                if (youtubeUrl) {
-                    // Không xử lý Key cho link YouTube
-                    await handleYouTube(message, youtubeUrl);
-                    return;
+            if (youtubeUrl) {
+
+                console.log(
+                    `[YT] 🔎 Phát hiện YouTube: ${youtubeUrl}`
+                );
+
+                let loadingMessage = null;
+                let videoPath = null;
+
+                try {
+
+                    // ==========================
+                    // Loading
+                    // ==========================
+
+                    loadingMessage = await message.reply(
+                        `${LOADING_EMOJI} Đang Tải Video`
+                    );
+
+                    // ==========================
+                    // Download
+                    // ==========================
+
+                    videoPath = await downloadYouTube(
+                        youtubeUrl
+                    );
+
+                    if (!videoPath || !fs.existsSync(videoPath)) {
+                        throw new Error(
+                            "Không tìm thấy file video sau khi tải."
+                        );
+                    }
+
+                    const stat = fs.statSync(videoPath);
+
+                    console.log(
+                        `[YT] 📦 File size: ${stat.size} bytes`
+                    );
+
+                    // ==========================
+                    // Discord limit
+                    // ==========================
+
+                    if (
+                        stat.size >
+                        MAX_DISCORD_FILE_SIZE
+                    ) {
+
+                        console.log(
+                            "[YT] ⚠️ Video vượt giới hạn Discord."
+                        );
+
+                        if (loadingMessage) {
+                            await loadingMessage.edit(
+                                `${SUCCESS_EMOJI} <@${message.author.id}> Video của bạn quá lớn để gửi trực tiếp.\n\n` +
+                                `**Youtube • Ấn vào đây để mở video**\n` +
+                                `${youtubeUrl}`
+                            );
+                        }
+
+                        deleteFile(videoPath);
+
+                        return;
+                    }
+
+                    // ==========================
+                    // Upload MP4
+                    // ==========================
+
+                    if (loadingMessage) {
+                        await loadingMessage.edit({
+                            content:
+                                `${SUCCESS_EMOJI} <@${message.author.id}> Video của bạn:`,
+                            files: [
+                                {
+                                    attachment: videoPath,
+                                    name: "video.mp4"
+                                }
+                            ]
+                        });
+                    } else {
+
+                        await message.reply({
+                            content:
+                                `${SUCCESS_EMOJI} <@${message.author.id}> Video của bạn:`,
+                            files: [
+                                {
+                                    attachment: videoPath,
+                                    name: "video.mp4"
+                                }
+                            ]
+                        });
+
+                    }
+
+                    console.log(
+                        "[YT] ✅ Đã gửi video cho user."
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        "[YT ERROR]",
+                        error
+                    );
+
+                    const errorText =
+                        cleanError(error);
+
+                    const errorMessage =
+                        `${FAILED_EMOJI} Lỗi khi tải: \`${errorText}\``;
+
+                    try {
+
+                        if (loadingMessage) {
+
+                            await loadingMessage.edit({
+                                content: errorMessage
+                            });
+
+                        } else {
+
+                            await message.reply(
+                                errorMessage
+                            );
+
+                        }
+
+                    } catch (replyError) {
+
+                        console.error(
+                            "[YT] Không thể gửi lỗi:",
+                            replyError
+                        );
+
+                    }
+
+                } finally {
+
+                    // ==========================
+                    // Cleanup
+                    // ==========================
+
+                    if (videoPath) {
+                        deleteFile(videoPath);
+                    }
+
                 }
+
+                /*
+                 * Rất quan trọng:
+                 * Nếu message là YouTube thì không tiếp tục
+                 * kiểm tra key.
+                 */
+                return;
             }
 
-            // =========================================================
+            // ==================================================
             // KEY SYSTEM
-            // =========================================================
+            // ==================================================
 
             console.log(
                 `[QUERY] Searching key: "${content}"`
             );
 
-            const target = keyCache.get(content);
+            const target =
+                keyCache.get(content);
 
             console.log(
                 "[TARGET]",
@@ -268,17 +401,24 @@ module.exports = (client) => {
 
             if (!target) return;
 
-            // Nếu DM thì không dùng guild.id
-            if (!message.guild) {
-                return message.reply(target.value);
-            }
+            // ==========================
+            // Permission
+            // ==========================
 
             try {
-                const result = keyChannelCache.checkPermission(
-                    target.name,
-                    message.channel.id,
-                    message.guild.id
-                );
+
+                if (!message.guild) {
+                    return message.reply(
+                        target.value
+                    );
+                }
+
+                const result =
+                    keyChannelCache.checkPermission(
+                        target.name,
+                        message.channel.id,
+                        message.guild.id
+                    );
 
                 console.log(
                     "[PERMISSION]",
@@ -286,25 +426,36 @@ module.exports = (client) => {
                 );
 
                 if (!result.allowed) {
-                    return message.reply(result.message);
+                    return message.reply(
+                        result.message
+                    );
                 }
 
-                return message.reply(target.value);
+                return message.reply(
+                    target.value
+                );
 
             } catch (err) {
+
                 console.error(
                     "[Key Check Error]",
                     err
                 );
 
-                return message.reply(target.value);
+                return message.reply(
+                    target.value
+                );
             }
 
         } catch (err) {
+
             console.error(
-                "[MESSAGE CREATE ERROR]",
+                "[MESSAGE ERROR]",
                 err
             );
+
         }
+
     });
+
 };
