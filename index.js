@@ -3,14 +3,32 @@ const { exec, spawn } = require("child_process");
 
 const ytDlp = require("yt-dlp-exec");
 
-(async () => {
+async function checkYtDlp() {
+    console.log("========== YT-DLP CHECK ==========");
+
     try {
+        console.log("[YT-DLP] Package loaded");
+
         const version = await ytDlp("--version");
-        console.log("[YT-DLP] ✅ Version:", version);
+
+        console.log("[YT-DLP] ✅ WORKING");
+        console.log("[YT-DLP] Version:", String(version).trim());
+
     } catch (err) {
-        console.error("[YT-DLP] ❌ Không chạy được:", err);
+        console.error("[YT-DLP] ❌ FAILED");
+        console.error("name:", err?.name);
+        console.error("message:", err?.message);
+        console.error("code:", err?.code);
+        console.error("exitCode:", err?.exitCode);
+        console.error("stdout:", err?.stdout);
+        console.error("stderr:", err?.stderr);
+        console.error("stack:", err?.stack);
     }
-})();
+
+    console.log("=================================");
+}
+
+checkYtDlp();
 
 // ---------- 1. TẠO COOKIE CHO YT-DLP TỪ BIẾN MÔI TRƯỜNG ----------
 const COOKIE_FILE = "/tmp/cookies.txt";
