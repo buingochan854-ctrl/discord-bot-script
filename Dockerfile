@@ -8,9 +8,9 @@ FROM node:20-bookworm
 # Thư mục làm việc
 WORKDIR /app
 
-# Cài FFmpeg
+# Cài FFmpeg và Python3 (Bắt buộc cho yt-dlp-exec)
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y ffmpeg python3 python-is-python3 && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy package trước để cache
@@ -22,27 +22,10 @@ RUN npm install
 # Copy toàn bộ source
 COPY . .
 
-# ==========================
-# DEBUG SYNTAX
-# ==========================
-
-RUN echo "========== TRY ==========" && \
-    grep -n "try" index.js || true
-
-RUN echo "========== CATCH ==========" && \
-    grep -n "catch" index.js || true
-
-RUN echo "========== LINE 1000-1090 ==========" && \
-    nl -ba index.js | sed -n '1000,1090p'
-
-# Kiểm tra cú pháp
+# Kiểm tra cú pháp JS trước khi build
 RUN node --check index.js
 
-# ==========================
-# Runtime
-# ==========================
-
-# Tạo thư mục cần thiết
+# Tạo thư mục tạm/tải về
 RUN mkdir -p downloads
 
 # Biến môi trường
