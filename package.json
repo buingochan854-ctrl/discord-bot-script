@@ -1,4 +1,4 @@
-{
+l{
   "name": "discord-bot-script",
   "version": "1.0.0",
   "description": "Discord Bot Script",
@@ -8,7 +8,7 @@
     "test": "node test.js"
   },
   "dependencies": {
-    "@distube/yt-dlp": "^3.0.0",
+    "@distube/yt-dlp": "^2.0.0",
     "@supabase/supabase-js": "^2.39.8",
     "axios": "^1.6.8",
     "discord.js": "^14.14.1",
